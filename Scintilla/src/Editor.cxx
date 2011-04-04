@@ -100,6 +100,7 @@ static inline bool IsAllSpacesOrTabs(char *s, unsigned int len) {
 Editor::Editor() {
 	ctrlID = 0;
 
+    showcursor = true;
 	stylesValid = false;
 
 	printMagnification = 0;
@@ -5717,10 +5718,12 @@ void Editor::SetDragPosition(SelectionPosition newPos) {
 }
 
 void Editor::DisplayCursor(Window::Cursor c) {
-	if (cursorMode == SC_CURSORNORMAL)
-		wMain.SetCursor(c);
-	else
-		wMain.SetCursor(static_cast<Window::Cursor>(cursorMode));
+	if (showcursor) {
+		if (cursorMode == SC_CURSORNORMAL)
+			wMain.SetCursor(c);
+		else
+			wMain.SetCursor(static_cast<Window::Cursor>(cursorMode));
+	}
 }
 
 bool Editor::DragThreshold(Point ptStart, Point ptNow) {
@@ -8879,6 +8882,10 @@ sptr_t Editor::WndProc(unsigned int iMessage, uptr_t wParam, sptr_t lParam) {
 
 	case SCI_CHANGELEXERSTATE:
 		pdoc->ChangeLexerState(wParam, lParam);
+		break;
+
+	case SCI_SHOWCURSOR: // TeXnicCenter
+		showcursor = wParam != 0;
 		break;
 
 	default:
