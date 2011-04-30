@@ -2174,6 +2174,8 @@ fun int DescribeProperty=4016(string name, stringresult description)
 # Retrieve a '\n' separated list of descriptions of the keyword sets understood by the current lexer.
 fun int DescribeKeyWordSets=4017(, stringresult descriptions)
 
+fun void ShowCursor=9999(bool show,)
+
 # Notifications
 # Type of modification and the action which caused the modification.
 # These are defined as a bit mask to make it easy to specify which notifications are wanted.
@@ -2351,6 +2353,8 @@ val SCLEX_MARKDOWN=98
 val SCLEX_TXT2TAGS=99
 val SCLEX_A68K=100
 val SCLEX_MODULA=101
+# TeXnicCenter
+val SCLEX_BIBTEX=999
 
 # When a lexer specifies its language as SCLEX_AUTOMATIC it receives a
 # value assigned in sequence from SCLEX_AUTOMATIC+1.
@@ -3115,6 +3119,15 @@ val SCE_TEX_GROUP=2
 val SCE_TEX_SYMBOL=3
 val SCE_TEX_COMMAND=4
 val SCE_TEX_TEXT=5
+val SCE_TEX_INLINE_MATH=6
+val SCE_TEX_INLINE_MATH_COMMAND=7
+val SCE_TEX_COMMENT=8
+val SCE_TEX_DIGIT=9
+val SCE_TEX_UNIT=10
+val SCE_TEX_GROUP_NAME=11
+val SCE_TEX_DOCUMENTCLASS=12
+val SCE_TEX_USE_PACKAGE=13
+
 lex Metapost=SCLEX_METAPOST SCE_METAPOST_
 val SCE_METAPOST_DEFAULT=0
 val SCE_METAPOST_SPECIAL=1
@@ -3807,6 +3820,15 @@ val SCE_MARKDOWN_BLOCKQUOTE=15
 val SCE_MARKDOWN_STRIKEOUT=16
 val SCE_MARKDOWN_HRULE=17
 val SCE_MARKDOWN_LINK=18
+# Lexical state for SCLEX_BIBTEX
+lex BibTeX=SCLEX_BIBTEX SCE_BIBTEX_
+val SCE_BIBTEX_DEFAULT=0
+val SCE_BIBTEX_ENTRY=1
+val SCE_BIBTEX_UNKNOWN_ENTRY=2
+val SCE_BIBTEX_KEY=3
+val SCE_BIBTEX_PARAMETER=4
+val SCE_BIBTEX_VALUE=5
+val SCE_BIBTEX_COMMENT=6
 val SCE_MARKDOWN_CODE=19
 val SCE_MARKDOWN_CODE2=20
 val SCE_MARKDOWN_CODEBK=21
