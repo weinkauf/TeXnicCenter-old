@@ -153,6 +153,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	/** In twoPhaseDraw mode, drawing is performed in two phases, first the background
 	* and then the foreground. This avoids chopping off characters that overlap the next run. */
 	bool twoPhaseDraw;
+	bool showcursor; // TeXnicCenter
 
 	int xOffset;		///< Horizontal scrolled amount in pixels
 	int xCaretMargin;	///< Ensure this many pixels visible on both sides of caret
