@@ -292,6 +292,12 @@ fun void MarkerSetFore=2041(int markerNumber, colour fore)
 # Set the background colour used for a particular marker number.
 fun void MarkerSetBack=2042(int markerNumber, colour back)
 
+# Set the background colour used for a particular marker number when its folding block is selected.
+fun void MarkerSetBackSelected=2292(int markerNumber, colour back)
+
+# Enable/disable highlight for current folding bloc (smallest one that contains the caret)
+fun void MarkerEnableHighlight=2293(bool enabled,)
+
 # Add a marker to a line, returning an ID which can be used to find or delete the marker.
 fun int MarkerAdd=2043(int line, int markerNumber)
 
@@ -351,6 +357,12 @@ set void SetMarginSensitiveN=2246(int margin, bool sensitive)
 
 # Retrieve the mouse click sensitivity of a margin.
 get bool GetMarginSensitiveN=2247(int margin,)
+
+# Set the cursor shown when the mouse is inside a margin.
+set void SetMarginCursorN=2248(int margin, int cursor)
+
+# Retrieve the cursor shown in a margin.
+get int GetMarginCursorN=2249(int margin,)
 
 # Styles in range 32..38 are predefined for parts of the UI and are not used as normal styles.
 # Style 39 is for future use.
@@ -538,6 +550,7 @@ val INDIC_STRIKE=4
 val INDIC_HIDDEN=5
 val INDIC_BOX=6
 val INDIC_ROUNDBOX=7
+val INDIC_STRAIGHTBOX=8
 val INDIC_MAX=31
 val INDIC_CONTAINER=8
 val INDIC0_MASK=0x20
@@ -1434,8 +1447,14 @@ fun int LineLength=2350(int line,)
 # Highlight the characters at two positions.
 fun void BraceHighlight=2351(position pos1, position pos2)
 
+# Use specified indicator to highlight matching braces instead of changing their style.
+fun void BraceHighlightIndicator=2498(bool useBraceHighlightIndicator, int indicator)
+
 # Highlight the character at a position indicating there is no matching brace.
 fun void BraceBadLight=2352(position pos,)
+
+# Use specified indicator to highlight non matching brace instead of changing its style.
+fun void BraceBadLightIndicator=2499(bool useBraceBadLightIndicator, int indicator)
 
 # Find the position of a matching brace or INVALID_POSITION if no match.
 fun position BraceMatch=2353(position pos,)
@@ -1540,7 +1559,9 @@ get bool GetMouseDownCaptures=2385(,)
 
 enu CursorShape=SC_CURSOR
 val SC_CURSORNORMAL=-1
+val SC_CURSORARROW=2
 val SC_CURSORWAIT=4
+val SC_CURSORREVERSEARROW=7
 # Sets the cursor to one of the SC_CURSOR* values.
 set void SetCursor=2386(int cursorType,)
 # Get cursor type.
@@ -1876,6 +1897,12 @@ set void IndicSetAlpha=2523(int indicator, int alpha)
 # Get the alpha fill colour of the given indicator.
 get int IndicGetAlpha=2524(int indicator,)
 
+# Set the alpha outline colour of the given indicator.
+set void IndicSetOutlineAlpha=2558(int indicator, int alpha)
+
+# Get the alpha outline colour of the given indicator.
+get int IndicGetOutlineAlpha=2559(int indicator,)
+
 # Set extra ascent for each line
 set void SetExtraAscent=2525(int extraAscent,)
 
@@ -2098,6 +2125,12 @@ fun int ContractedFoldNext=2618(int lineStart,)
 # Centre current line in window.
 fun void VerticalCentreCaret=2619(,)
 
+# Move the selected lines up one line, shifting the line above after the selection
+fun void MoveSelectedLinesUp=2620(,)
+
+# Move the selected lines down one line, shifting the line below before the selection
+fun void MoveSelectedLinesDown=2621(,)
+
 # Start notifying the container of all key presses and commands.
 fun void StartRecord=3001(,)
 
@@ -2194,6 +2227,12 @@ val SC_MOD_CHANGEANNOTATION=0x20000
 val SC_MOD_CONTAINER=0x40000
 val SC_MOD_LEXERSTATE=0x80000
 val SC_MODEVENTMASKALL=0xFFFFF
+
+enu Update=SC_UPDATE_
+val SC_UPDATE_CONTENT=0x1
+val SC_UPDATE_SELECTION=0x2
+val SC_UPDATE_V_SCROLL=0x4
+val SC_UPDATE_H_SCROLL=0x8
 
 # For compatibility, these go through the COMMAND notification rather than NOTIFY
 # and should have had exactly the same values as the EN_* constants.
@@ -2337,6 +2376,8 @@ val SCLEX_NIMROD=96
 val SCLEX_SML=97
 val SCLEX_MARKDOWN=98
 val SCLEX_TXT2TAGS=99
+val SCLEX_A68K=100
+val SCLEX_MODULA=101
 # TeXnicCenter
 val SCLEX_BIBTEX=999
 
@@ -2385,6 +2426,8 @@ val SCE_C_WORD2=16
 val SCE_C_COMMENTDOCKEYWORD=17
 val SCE_C_COMMENTDOCKEYWORDERROR=18
 val SCE_C_GLOBALCLASS=19
+val SCE_C_STRINGRAW=20
+val SCE_C_TRIPLEVERBATIM=21
 # Lexical states for SCLEX_D
 lex D=SCLEX_D SCE_D_
 val SCE_D_DEFAULT=0
@@ -2904,6 +2947,7 @@ val SCE_ASM_COMMENTBLOCK=11
 val SCE_ASM_CHARACTER=12
 val SCE_ASM_STRINGEOL=13
 val SCE_ASM_EXTINSTRUCTION=14
+val SCE_ASM_COMMENTDIRECTIVE=15
 # Lexical states for SCLEX_FORTRAN
 lex Fortran=SCLEX_FORTRAN SCE_F_
 lex F77=SCLEX_F77 SCE_F_
@@ -3841,6 +3885,47 @@ val SCE_TXT2TAGS_COMMENT=22
 val SCE_TXT2TAGS_OPTION=23
 val SCE_TXT2TAGS_PREPROC=24
 val SCE_TXT2TAGS_POSTPROC=25
+# Lexical states for SCLEX_A68K
+lex A68k=SCLEX_A68K SCE_A68K_
+val SCE_A68K_DEFAULT=0
+val SCE_A68K_COMMENT=1
+val SCE_A68K_NUMBER_DEC=2
+val SCE_A68K_NUMBER_BIN=3
+val SCE_A68K_NUMBER_HEX=4
+val SCE_A68K_STRING1=5
+val SCE_A68K_OPERATOR=6
+val SCE_A68K_CPUINSTRUCTION=7
+val SCE_A68K_EXTINSTRUCTION=8
+val SCE_A68K_REGISTER=9
+val SCE_A68K_DIRECTIVE=10
+val SCE_A68K_MACRO_ARG=11
+val SCE_A68K_LABEL=12
+val SCE_A68K_STRING2=13
+val SCE_A68K_IDENTIFIER=14
+val SCE_A68K_MACRO_DECLARATION=15
+val SCE_A68K_COMMENT_WORD=16
+val SCE_A68K_COMMENT_SPECIAL=17
+val SCE_A68K_COMMENT_DOXYGEN=18
+# Lexical states for SCLEX_MODULA
+lex Modula=SCLEX_MODULA SCE_MODULA_
+val SCE_MODULA_DEFAULT=0
+val SCE_MODULA_COMMENT=1
+val SCE_MODULA_DOXYCOMM=2
+val SCE_MODULA_DOXYKEY=3
+val SCE_MODULA_KEYWORD=4
+val SCE_MODULA_RESERVED=5
+val SCE_MODULA_NUMBER=6
+val SCE_MODULA_BASENUM=7
+val SCE_MODULA_FLOAT=8
+val SCE_MODULA_STRING=9
+val SCE_MODULA_STRSPEC=10
+val SCE_MODULA_CHAR=11
+val SCE_MODULA_CHARSPEC=12
+val SCE_MODULA_PROC=13
+val SCE_MODULA_PRAGMA=14
+val SCE_MODULA_PRGKEY=15
+val SCE_MODULA_OPERATOR=16
+val SCE_MODULA_BADSTR=17
 
 # Events
 
@@ -3851,22 +3936,22 @@ evt void SavePointLeft=2003(void)
 evt void ModifyAttemptRO=2004(void)
 # GTK+ Specific to work around focus and accelerator problems:
 evt void Key=2005(int ch, int modifiers)
-evt void DoubleClick=2006(void)
-evt void UpdateUI=2007(void)
-evt void Modified=2008(int position, int modificationType, string text, int length, int linesAdded, int line, int foldLevelNow, int foldLevelPrev)
+evt void DoubleClick=2006(int modifiers, int position, int line)
+evt void UpdateUI=2007(int updated)
+evt void Modified=2008(int position, int modificationType, string text, int length, int linesAdded, int line, int foldLevelNow, int foldLevelPrev, int token, int annotationLinesAdded)
 evt void MacroRecord=2009(int message, int wParam, int lParam)
 evt void MarginClick=2010(int modifiers, int position, int margin)
 evt void NeedShown=2011(int position, int length)
 evt void Painted=2013(void)
-evt void UserListSelection=2014(int listType, string text)
+evt void UserListSelection=2014(int listType, string text, int position)
 evt void URIDropped=2015(string text)
-evt void DwellStart=2016(int position)
-evt void DwellEnd=2017(int position)
+evt void DwellStart=2016(int position, int x, int y)
+evt void DwellEnd=2017(int position, int x, int y)
 evt void Zoom=2018(void)
 evt void HotSpotClick=2019(int modifiers, int position)
 evt void HotSpotDoubleClick=2020(int modifiers, int position)
 evt void CallTipClick=2021(int position)
-evt void AutoCSelection=2022(string text)
+evt void AutoCSelection=2022(string text, int position)
 evt void IndicatorClick=2023(int modifiers, int position)
 evt void IndicatorRelease=2024(int modifiers, int position)
 evt void AutoCCancelled=2025(void)

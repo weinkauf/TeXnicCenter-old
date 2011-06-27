@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <math.h>
 
 #include <glib.h>
 #include <gmodule.h>
@@ -37,6 +38,22 @@
 #define IS_WIDGET_FOCUSSED(w) (gtk_widget_has_focus(GTK_WIDGET(w)))
 #else
 #define IS_WIDGET_FOCUSSED(w) (GTK_WIDGET_HAS_FOCUS(w))
+#endif
+
+#if GTK_CHECK_VERSION(2,22,0)
+#define USE_CAIRO 1
+#endif
+
+static GdkWindow *WindowFromWidget(GtkWidget *w) {
+#if GTK_CHECK_VERSION(3,0,0)
+	return gtk_widget_get_window(w);
+#else
+	return w->window;
+#endif
+}
+
+#ifdef USE_CAIRO
+#define DISABLE_GDK_FONT 1
 #endif
 
 #ifdef _MSC_VER
@@ -107,10 +124,17 @@ class FontHandle {
 	encodingType et;
 public:
 	int ascent;
+#ifndef DISABLE_GDK_FONT
 	GdkFont *pfont;
+#endif
 	PangoFontDescription *pfd;
 	int characterSet;
-	FontHandle(GdkFont *pfont_) {
+#ifdef DISABLE_GDK_FONT
+	FontHandle() : et(singleByte), ascent(0), pfd(0), characterSet(-1) {
+		ResetWidths(et);
+	}
+#else
+	FontHandle(GdkFont *pfont_=0) {
 		et = singleByte;
 		ascent = 0;
 		pfont = pfont_;
@@ -118,10 +142,13 @@ public:
 		characterSet = -1;
 		ResetWidths(et);
 	}
+#endif
 	FontHandle(PangoFontDescription *pfd_, int characterSet_) {
 		et = singleByte;
 		ascent = 0;
+#ifndef DISABLE_GDK_FONT
 		pfont = 0;
+#endif
 		pfd = pfd_;
 		characterSet = characterSet_;
 		ResetWidths(et);
@@ -130,8 +157,8 @@ public:
 #ifndef DISABLE_GDK_FONT
 		if (pfont)
 			gdk_font_unref(pfont);
-#endif
 		pfont = 0;
+#endif
 		if (pfd)
 			pango_font_description_free(pfd);
 		pfd = 0;
@@ -174,9 +201,11 @@ static GtkWidget *PWidget(WindowID wid) {
 	return reinterpret_cast<GtkWidget *>(wid);
 }
 
+#if !GTK_CHECK_VERSION(3,0,0)
 static GtkWidget *PWidget(Window &w) {
 	return PWidget(w.GetID());
 }
+#endif
 
 Point Point::FromLong(long lpoint) {
 	return Point(
@@ -245,6 +274,8 @@ void Palette::WantFind(ColourPair &cp, bool want) {
 }
 
 void Palette::Allocate(Window &w) {
+#if !GTK_CHECK_VERSION(3,0,0)
+	// Disable palette on GTK+ 3.
 	if (allocatedPalette) {
 		gdk_colormap_free_colors(gtk_widget_get_colormap(PWidget(w)),
 		                         reinterpret_cast<GdkColor *>(allocatedPalette),
@@ -273,6 +304,7 @@ void Palette::Allocate(Window &w) {
 		}
 	}
 	delete []successPalette;
+#endif
 }
 
 #ifndef DISABLE_GDK_FONT
@@ -662,7 +694,7 @@ FontID FontCached::CreateNewFont(const char *fontName, int characterSet,
 	}
 	return new FontHandle(newid);
 #else
-	return new FontHandle(0);
+	return new FontHandle();
 #endif
 }
 
@@ -686,11 +718,18 @@ void Font::Release() {
 #ifdef SCI_NAMESPACE
 namespace Scintilla {
 #endif
+
+// On GTK+ 2.x, SurfaceID is a GdkDrawable* and on GTK+ 3.x, it is a cairo_t*
 class SurfaceImpl : public Surface {
 	encodingType et;
+#ifdef USE_CAIRO
+	cairo_t *context;
+	cairo_surface_t *psurf;
+#else
 	GdkDrawable *drawable;
 	GdkGC *gc;
 	GdkPixmap *ppixmap;
+#endif
 	int x;
 	int y;
 	bool inited;
@@ -806,7 +845,15 @@ void SurfaceImpl::SetConverter(int characterSet_) {
 	}
 }
 
-SurfaceImpl::SurfaceImpl() : et(singleByte), drawable(0), gc(0), ppixmap(0),
+SurfaceImpl::SurfaceImpl() : et(singleByte),
+#ifdef USE_CAIRO
+context(0),
+psurf(0),
+#else
+drawable(0),
+gc(0),
+ppixmap(0),
+#endif
 x(0), y(0), inited(false), createdGC(false)
 , pcontext(0), layout(0), characterSet(-1) {
 }
@@ -817,15 +864,28 @@ SurfaceImpl::~SurfaceImpl() {
 
 void SurfaceImpl::Release() {
 	et = singleByte;
+#ifndef USE_CAIRO
 	drawable = 0;
+#endif
 	if (createdGC) {
 		createdGC = false;
+#ifdef USE_CAIRO
+		cairo_destroy(context);
+#else
 		g_object_unref(gc);
+#endif
 	}
+#ifdef USE_CAIRO
+	context = 0;
+	if (psurf)
+		cairo_surface_destroy(psurf);
+	psurf = 0;
+#else
 	gc = 0;
 	if (ppixmap)
 		g_object_unref(ppixmap);
 	ppixmap = 0;
+#endif
 	if (layout)
 		g_object_unref(layout);
 	layout = 0;
@@ -847,6 +907,23 @@ bool SurfaceImpl::Initialised() {
 void SurfaceImpl::Init(WindowID wid) {
 	Release();
 	PLATFORM_ASSERT(wid);
+#ifdef USE_CAIRO
+#if GTK_CHECK_VERSION(3,0,0)
+	GdkWindow *drawable_ = gtk_widget_get_window(PWidget(wid));
+#else
+	GdkDrawable *drawable_ = GDK_DRAWABLE(PWidget(wid)->window);
+#endif
+	if (drawable_) {
+		context = gdk_cairo_create(drawable_);
+		PLATFORM_ASSERT(context);
+	} else {
+		// Shouldn't happen with valid window but may when calls made before
+		// window completely allocated and mapped.
+		psurf = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 1, 1);
+		context = cairo_create(psurf);
+	}
+	createdGC = true;
+#endif
 	pcontext = gtk_widget_create_pango_context(PWidget(wid));
 	PLATFORM_ASSERT(pcontext);
 	layout = pango_layout_new(pcontext);
@@ -856,15 +933,26 @@ void SurfaceImpl::Init(WindowID wid) {
 
 void SurfaceImpl::Init(SurfaceID sid, WindowID wid) {
 	PLATFORM_ASSERT(sid);
-	GdkDrawable *drawable_ = reinterpret_cast<GdkDrawable *>(sid);
 	Release();
 	PLATFORM_ASSERT(wid);
+#ifdef USE_CAIRO
+#if GTK_CHECK_VERSION(3,0,0)
+	context = cairo_reference(reinterpret_cast<cairo_t *>(sid));
+#else
+	context = gdk_cairo_create(reinterpret_cast<GdkDrawable *>(sid));
+#endif
+#else
+	drawable = reinterpret_cast<GdkDrawable *>(sid);
+	gc = gdk_gc_new(drawable);
+#endif
 	pcontext = gtk_widget_create_pango_context(PWidget(wid));
 	layout = pango_layout_new(pcontext);
-	drawable = drawable_;
-	gc = gdk_gc_new(drawable_);
+#ifdef USE_CAIRO
+	cairo_set_line_width(context, 1);
+#else
 	// Ask for lines that do not paint the last pixel so is like Win32
 	gdk_gc_set_line_attributes(gc, 0, GDK_LINE_SOLID, GDK_CAP_NOT_LAST, GDK_JOIN_MITER);
+#endif
 	createdGC = true;
 	inited = true;
 }
@@ -873,28 +961,70 @@ void SurfaceImpl::InitPixMap(int width, int height, Surface *surface_, WindowID 
 	PLATFORM_ASSERT(surface_);
 	Release();
 	SurfaceImpl *surfImpl = static_cast<SurfaceImpl *>(surface_);
-	PLATFORM_ASSERT(surfImpl->drawable);
 	PLATFORM_ASSERT(wid);
+#ifdef USE_CAIRO
+	context = cairo_reference(surfImpl->context);
+#else
+	PLATFORM_ASSERT(surfImpl->drawable);
+	gc = gdk_gc_new(surfImpl->drawable);
+#endif
 	pcontext = gtk_widget_create_pango_context(PWidget(wid));
 	PLATFORM_ASSERT(pcontext);
 	layout = pango_layout_new(pcontext);
 	PLATFORM_ASSERT(layout);
+#ifdef USE_CAIRO
+	if (height > 0 && width > 0)
+		psurf = gdk_window_create_similar_surface(
+			gtk_widget_get_window(PWidget(wid)),
+			CAIRO_CONTENT_COLOR_ALPHA, width, height);
+#else
 	if (height > 0 && width > 0)
 		ppixmap = gdk_pixmap_new(surfImpl->drawable, width, height, -1);
 	drawable = ppixmap;
-	gc = gdk_gc_new(surfImpl->drawable);
+#endif
+#ifdef USE_CAIRO
+	cairo_destroy(context);
+	context = cairo_create(psurf);
+	cairo_rectangle(context, 0, 0, width, height);
+	cairo_set_source_rgb(context, 1.0, 0, 0);
+	cairo_fill(context);
+	// This produces sharp drawing more similar to GDK:
+	//cairo_set_antialias(context, CAIRO_ANTIALIAS_NONE);
+#endif
+#ifdef USE_CAIRO
+	cairo_set_line_width(context, 1);
+#else
 	// Ask for lines that do not paint the last pixel so is like Win32
 	gdk_gc_set_line_attributes(gc, 0, GDK_LINE_SOLID, GDK_CAP_NOT_LAST, GDK_JOIN_MITER);
+#endif
 	createdGC = true;
 	inited = true;
 }
 
 void SurfaceImpl::PenColour(ColourAllocated fore) {
+#ifdef USE_CAIRO
+	if (context) {
+		ColourDesired cdFore(fore.AsLong());
+#if GTK_CHECK_VERSION(3,0,0)
+		// Colours appear inverted - possibly because palette no longer used
+		cairo_set_source_rgb(context,
+			cdFore.GetRed() / 255.0,
+			cdFore.GetGreen() / 255.0,
+			cdFore.GetBlue() / 255.0);
+#else
+		cairo_set_source_rgb(context,
+			cdFore.GetBlue() / 255.0,
+			cdFore.GetGreen() / 255.0,
+			cdFore.GetRed() / 255.0);
+#endif
+	}
+#else
 	if (gc) {
 		GdkColor co;
 		co.pixel = fore.AsLong();
 		gdk_gc_set_foreground(gc, &co);
 	}
+#endif
 }
 
 int SurfaceImpl::LogPixelsY() {
@@ -911,18 +1041,71 @@ void SurfaceImpl::MoveTo(int x_, int y_) {
 	y = y_;
 }
 
+#ifdef USE_CAIRO
+static int Delta(int difference) {
+	if (difference < 0)
+		return -1;
+	else if (difference > 0)
+		return 1;
+	else
+		return 0;
+}
+#endif
+
 void SurfaceImpl::LineTo(int x_, int y_) {
+#ifdef USE_CAIRO
+	// cairo_line_to draws the end position, unlike Win32 or GDK with GDK_CAP_NOT_LAST.
+	// For simple cases, move back one pixel from end.
+	if (context) {
+		int xDiff = x_ - x;
+		int xDelta = Delta(xDiff);
+		int yDiff = y_ - y;
+		int yDelta = Delta(yDiff);
+		if ((xDiff == 0) || (yDiff == 0)) {
+			// Horizontal or vertical lines can be more precisely drawn as a filled rectangle
+			int xEnd = x_ - xDelta;
+			int left = Platform::Minimum(x, xEnd);
+			int width = abs(x - xEnd) + 1;
+			int yEnd = y_ - yDelta;
+			int top = Platform::Minimum(y, yEnd);
+			int height = abs(y - yEnd) + 1;
+			cairo_rectangle(context, left, top, width, height);
+			cairo_fill(context);
+		} else if ((abs(xDiff) == abs(yDiff))) {
+			// 45 degree slope
+			cairo_move_to(context, x + 0.5, y + 0.5);
+			cairo_line_to(context, x_ + 0.5 - xDelta, y_ + 0.5 - yDelta);
+		} else {
+			// Line has a different slope so difficult to avoid last pixel
+			cairo_move_to(context, x + 0.5, y + 0.5);
+			cairo_line_to(context, x_ + 0.5, y_ + 0.5);
+		}
+		cairo_stroke(context);
+	}
+#else
 	if (drawable && gc) {
 		gdk_draw_line(drawable, gc,
 		              x, y,
 		              x_, y_);
 	}
+#endif
 	x = x_;
 	y = y_;
 }
 
 void SurfaceImpl::Polygon(Point *pts, int npts, ColourAllocated fore,
                           ColourAllocated back) {
+#ifdef USE_CAIRO
+	PenColour(back);
+	cairo_move_to(context, pts[0].x + 0.5, pts[0].y + 0.5);
+	for (int i = 1;i < npts;i++) {
+		cairo_line_to(context, pts[i].x + 0.5, pts[i].y + 0.5);
+	}
+	cairo_close_path(context);
+	cairo_fill_preserve(context);
+	PenColour(fore);
+	cairo_stroke(context);
+#else
 	GdkPoint gpts[20];
 	if (npts < static_cast<int>((sizeof(gpts) / sizeof(gpts[0])))) {
 		for (int i = 0;i < npts;i++) {
@@ -934,35 +1117,62 @@ void SurfaceImpl::Polygon(Point *pts, int npts, ColourAllocated fore,
 		PenColour(fore);
 		gdk_draw_polygon(drawable, gc, 0, gpts, npts);
 	}
+#endif
 }
 
 void SurfaceImpl::RectangleDraw(PRectangle rc, ColourAllocated fore, ColourAllocated back) {
+#ifdef USE_CAIRO
+	if (context) {
+#else
 	if (gc && drawable) {
+#endif
+#ifdef USE_CAIRO
+		cairo_rectangle(context, rc.left + 0.5, rc.top + 0.5,
+	                     rc.right - rc.left - 1, rc.bottom - rc.top - 1);
+		PenColour(back);
+		cairo_fill_preserve(context);
+		PenColour(fore);
+		cairo_stroke(context);
+#else
 		PenColour(back);
 		gdk_draw_rectangle(drawable, gc, 1,
 		                   rc.left + 1, rc.top + 1,
 		                   rc.right - rc.left - 2, rc.bottom - rc.top - 2);
-
 		PenColour(fore);
 		// The subtraction of 1 off the width and height here shouldn't be needed but
 		// otherwise a different rectangle is drawn than would be done if the fill parameter == 1
 		gdk_draw_rectangle(drawable, gc, 0,
 		                   rc.left, rc.top,
 		                   rc.right - rc.left - 1, rc.bottom - rc.top - 1);
+#endif
 	}
 }
 
 void SurfaceImpl::FillRectangle(PRectangle rc, ColourAllocated back) {
 	PenColour(back);
+#ifdef USE_CAIRO
+	if (context && (rc.left < maxCoordinate)) {	// Protect against out of range
+		cairo_rectangle(context, rc.left, rc.top,
+	                     rc.right - rc.left, rc.bottom - rc.top);
+		cairo_fill(context);
+	}
+#else
 	if (drawable && (rc.left < maxCoordinate)) {	// Protect against out of range
 		gdk_draw_rectangle(drawable, gc, 1,
 		                   rc.left, rc.top,
 		                   rc.right - rc.left, rc.bottom - rc.top);
 	}
+#endif
 }
 
 void SurfaceImpl::FillRectangle(PRectangle rc, Surface &surfacePattern) {
-	if (static_cast<SurfaceImpl &>(surfacePattern).drawable) {
+	SurfaceImpl &surfi = static_cast<SurfaceImpl &>(surfacePattern);
+#ifdef USE_CAIRO
+	bool canDraw = surfi.psurf;
+#else
+	bool canDraw = surfi.drawable;
+#endif
+	if (canDraw) {
 		// Tile pattern over rectangle
 		// Currently assumes 8x8 pattern
 		int widthPat = 8;
@@ -971,12 +1181,18 @@ void SurfaceImpl::FillRectangle(PRectangle rc, Surface &surfacePattern) {
 			int widthx = (xTile + widthPat > rc.right) ? rc.right - xTile : widthPat;
 			for (int yTile = rc.top; yTile < rc.bottom; yTile += heightPat) {
 				int heighty = (yTile + heightPat > rc.bottom) ? rc.bottom - yTile : heightPat;
+#ifdef USE_CAIRO
+				cairo_set_source_surface(context, surfi.psurf, xTile, yTile);
+				cairo_rectangle(context, xTile, yTile, widthx, heighty);
+				cairo_fill(context);
+#else
 				gdk_draw_drawable(drawable,
 				                gc,
 				                static_cast<SurfaceImpl &>(surfacePattern).drawable,
 				                0, 0,
 				                xTile, yTile,
 				                widthx, heighty);
+#endif
 			}
 		}
 	} else {
@@ -1005,24 +1221,27 @@ void SurfaceImpl::RoundedRectangle(PRectangle rc, ColourAllocated fore, ColourAl
 	}
 }
 
+#ifdef USE_CAIRO
+
+static void PathRoundRectangle(cairo_t *context, double left, double top, double width, double height, int radius) {
+	double degrees = M_PI / 180.0;
+
+	cairo_new_sub_path(context);
+	cairo_arc(context, left + width - radius, top + radius, radius, -90 * degrees, 0 * degrees);
+	cairo_arc(context, left + width - radius, top + height - radius, radius, 0 * degrees, 90 * degrees);
+	cairo_arc(context, left + radius, top + height - radius, radius, 90 * degrees, 180 * degrees);
+	cairo_arc(context, left + radius, top + radius, radius, 180 * degrees, 270 * degrees);
+	cairo_close_path(context);
+}
+
+#else
+
 // Plot a point into a guint32 buffer symetrically to all 4 qudrants
 static void AllFour(guint32 *pixels, int stride, int width, int height, int x, int y, guint32 val) {
 	pixels[y*stride+x] = val;
 	pixels[y*stride+width-1-x] = val;
 	pixels[(height-1-y)*stride+x] = val;
 	pixels[(height-1-y)*stride+width-1-x] = val;
-}
-
-static unsigned int GetRValue(unsigned int co) {
-	return (co >> 16) & 0xff;
-}
-
-static unsigned int GetGValue(unsigned int co) {
-	return (co >> 8) & 0xff;
-}
-
-static unsigned int GetBValue(unsigned int co) {
-	return co & 0xff;
 }
 
 static guint32 u32FromRGBA(guint8 r, guint8 g, guint8 b, guint8 a) {
@@ -1037,8 +1256,41 @@ static guint32 u32FromRGBA(guint8 r, guint8 g, guint8 b, guint8 a) {
 	return converter.val;
 }
 
+#endif
+
+static unsigned int GetRValue(unsigned int co) {
+	return (co >> 16) & 0xff;
+}
+
+static unsigned int GetGValue(unsigned int co) {
+	return (co >> 8) & 0xff;
+}
+
+static unsigned int GetBValue(unsigned int co) {
+	return co & 0xff;
+}
+
 void SurfaceImpl::AlphaRectangle(PRectangle rc, int cornerSize, ColourAllocated fill, int alphaFill,
 		ColourAllocated outline, int alphaOutline, int flags) {
+#ifdef USE_CAIRO
+	if (context && rc.Width() > 0) {
+		cairo_set_source_rgba(context,
+			GetRValue(fill.AsLong()) / 255.0,
+			GetGValue(fill.AsLong()) / 255.0,
+			GetBValue(fill.AsLong()) / 255.0,
+			alphaFill / 255.0);
+		PathRoundRectangle(context, rc.left + 1.0, rc.top+1.0, rc.right - rc.left - 2.0, rc.bottom - rc.top - 2.0, cornerSize);
+		cairo_fill(context);
+
+		cairo_set_source_rgba(context,
+			GetRValue(outline.AsLong()) / 255.0,
+			GetGValue(outline.AsLong()) / 255.0,
+			GetBValue(outline.AsLong()) / 255.0,
+			alphaOutline / 255.0);
+		PathRoundRectangle(context, rc.left +0.5, rc.top+0.5, rc.right - rc.left - 1, rc.bottom - rc.top - 1, cornerSize);
+		cairo_stroke(context);
+	}
+#else
 	if (gc && drawable && rc.Width() > 0) {
 		int width = rc.Width();
 		int height = rc.Height();
@@ -1078,10 +1330,18 @@ void SurfaceImpl::AlphaRectangle(PRectangle rc, int cornerSize, ColourAllocated 
 
 		g_object_unref(pixalpha);
 	}
+#endif
 }
 
 void SurfaceImpl::Ellipse(PRectangle rc, ColourAllocated fore, ColourAllocated back) {
 	PenColour(back);
+#ifdef USE_CAIRO
+	cairo_arc(context, (rc.left + rc.right) / 2 + 0.5, (rc.top + rc.bottom) / 2 + 0.5,
+		Platform::Minimum(rc.Width(), rc.Height()) / 2, 0, 2*M_PI);
+	cairo_fill_preserve(context);
+	PenColour(fore);
+	cairo_stroke(context);
+#else
 	gdk_draw_arc(drawable, gc, 1,
 	             rc.left + 1, rc.top + 1,
 	             rc.right - rc.left - 2, rc.bottom - rc.top - 2,
@@ -1093,16 +1353,30 @@ void SurfaceImpl::Ellipse(PRectangle rc, ColourAllocated fore, ColourAllocated b
 	             rc.left, rc.top,
 	             rc.right - rc.left - 1, rc.bottom - rc.top - 1,
 	             0, 32767);
+#endif
 }
 
 void SurfaceImpl::Copy(PRectangle rc, Point from, Surface &surfaceSource) {
-	if (static_cast<SurfaceImpl &>(surfaceSource).drawable) {
+	SurfaceImpl &surfi = static_cast<SurfaceImpl &>(surfaceSource);
+#ifdef USE_CAIRO
+	bool canDraw = surfi.psurf;
+#else
+	bool canDraw = surfi.drawable;
+#endif
+	if (canDraw) {
+#ifdef USE_CAIRO
+		cairo_set_source_surface(context, surfi.psurf,
+			rc.left - from.x, rc.top - from.y);
+		cairo_rectangle(context, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top);
+		cairo_fill(context);
+#else
 		gdk_draw_drawable(drawable,
 		                gc,
 		                static_cast<SurfaceImpl &>(surfaceSource).drawable,
 		                from.x, from.y,
 		                rc.left, rc.top,
 		                rc.right - rc.left, rc.bottom - rc.top);
+#endif
 	}
 }
 
@@ -1232,7 +1506,11 @@ const int maxLengthTextRun = 10000;
 void SurfaceImpl::DrawTextBase(PRectangle rc, Font &font_, int ybase, const char *s, int len,
                                  ColourAllocated fore) {
 	PenColour(fore);
+#ifdef USE_CAIRO
+	if (context) {
+#else
 	if (gc && drawable) {
+#endif
 		int xText = rc.left;
 		if (PFont(font_)->pfd) {
 			char *utfForm = 0;
@@ -1256,12 +1534,20 @@ void SurfaceImpl::DrawTextBase(PRectangle rc, Font &font_, int ybase, const char
 				pango_layout_set_text(layout, utfForm, len);
 			}
 			pango_layout_set_font_description(layout, PFont(font_)->pfd);
+#ifdef USE_CAIRO
+			pango_cairo_update_layout(context, layout);
+#endif
 #ifdef PANGO_VERSION
 			PangoLayoutLine *pll = pango_layout_get_line_readonly(layout,0);
 #else
 			PangoLayoutLine *pll = pango_layout_get_line(layout,0);
 #endif
+#ifdef USE_CAIRO
+			cairo_move_to(context, xText, ybase);
+			pango_cairo_show_layout_line(context, pll);
+#else
 			gdk_draw_layout_line(drawable, gc, xText, ybase, pll);
+#endif
 			if (useGFree) {
 				g_free(utfForm);
 			} else {
@@ -1717,9 +2003,14 @@ int SurfaceImpl::SetPalette(Palette *, bool) {
 }
 
 void SurfaceImpl::SetClip(PRectangle rc) {
+#ifdef USE_CAIRO
+	cairo_rectangle(context, rc.left, rc.top, rc.right, rc.bottom);
+	cairo_clip(context);
+#else
 	GdkRectangle area = {rc.left, rc.top,
 	                     rc.right - rc.left, rc.bottom - rc.top};
 	gdk_gc_set_clip_rectangle(gc, &area);
+#endif
 }
 
 void SurfaceImpl::FlushCachedState() {}
@@ -1754,11 +2045,17 @@ PRectangle Window::GetPosition() {
 	// Before any size allocated pretend its 1000 wide so not scrolled
 	PRectangle rc(0, 0, 1000, 1000);
 	if (wid) {
-		rc.left = PWidget(wid)->allocation.x;
-		rc.top = PWidget(wid)->allocation.y;
-		if (PWidget(wid)->allocation.width > 20) {
-			rc.right = rc.left + PWidget(wid)->allocation.width;
-			rc.bottom = rc.top + PWidget(wid)->allocation.height;
+		GtkAllocation allocation;
+#if GTK_CHECK_VERSION(3,0,0)
+		gtk_widget_get_allocation(PWidget(wid), &allocation);
+#else
+		allocation = PWidget(wid)->allocation;
+#endif
+		rc.left = allocation.x;
+		rc.top = allocation.y;
+		if (allocation.width > 20) {
+			rc.right = rc.left + allocation.width;
+			rc.bottom = rc.top + allocation.height;
 		}
 	}
 	return rc;
@@ -1776,7 +2073,7 @@ void Window::SetPosition(PRectangle rc) {
 void Window::SetPositionRelative(PRectangle rc, Window relativeTo) {
 	int ox = 0;
 	int oy = 0;
-	gdk_window_get_origin(PWidget(relativeTo.wid)->window, &ox, &oy);
+	gdk_window_get_origin(WindowFromWidget(PWidget(relativeTo.wid)), &ox, &oy);
 	ox += rc.left;
 	if (ox < 0)
 		ox = 0;
@@ -1862,8 +2159,8 @@ void Window::SetCursor(Cursor curs) {
 		break;
 	}
 
-	if (PWidget(wid)->window)
-		gdk_window_set_cursor(PWidget(wid)->window, gdkCurs);
+	if (WindowFromWidget(PWidget(wid)))
+		gdk_window_set_cursor(WindowFromWidget(PWidget(wid)), gdkCurs);
 	gdk_cursor_unref(gdkCurs);
 }
 
@@ -1875,9 +2172,8 @@ void Window::SetTitle(const char *s) {
    gdk window coordinates */
 PRectangle Window::GetMonitorRect(Point pt) {
 	gint x_offset, y_offset;
-	pt = pt;
 
-	gdk_window_get_origin(PWidget(wid)->window, &x_offset, &y_offset);
+	gdk_window_get_origin(WindowFromWidget(PWidget(wid)), &x_offset, &y_offset);
 
 #if GTK_CHECK_VERSION(2,2,0)
 	// GTK+ 2.2+
@@ -1894,6 +2190,7 @@ PRectangle Window::GetMonitorRect(Point pt) {
 		return PRectangle(rect.x, rect.y, rect.x + rect.width, rect.y + rect.height);
 	}
 #else
+	pt = pt;
 	return PRectangle(-x_offset, -y_offset, (-x_offset) + gdk_screen_width(),
 	                  (-y_offset) + gdk_screen_height());
 #endif
@@ -1907,7 +2204,7 @@ struct ListImage {
 static void list_image_free(gpointer, gpointer value, gpointer) {
 	ListImage *list_image = (ListImage *) value;
 	if (list_image->pixbuf)
-		g_object_unref (list_image->pixbuf);
+		g_object_unref(list_image->pixbuf);
 	g_free(list_image);
 }
 
@@ -1936,7 +2233,7 @@ public:
 	CallBackAction doubleClickAction;
 	void *doubleClickActionData;
 
-	ListBoxX() : list(0), pixhash(NULL), pixbuf_renderer(0),
+	ListBoxX() : list(0), scroller(0), pixhash(NULL), pixbuf_renderer(0),
 		desiredVisibleRows(5), maxItemCharacters(0),
 		aveCharWidth(1), doubleClickAction(NULL), doubleClickActionData(NULL) {
 	}
@@ -1991,24 +2288,47 @@ static gboolean ButtonPress(GtkWidget *, GdkEventButton* ev, gpointer p) {
 /* Change the active color to the selected color so the listbox uses the color
 scheme that it would use if it had the focus. */
 static void StyleSet(GtkWidget *w, GtkStyle*, void*) {
-	GtkStyle* style;
 
 	g_return_if_fail(w != NULL);
 
 	/* Copy the selected color to active.  Note that the modify calls will cause
 	recursive calls to this function after the value is updated and w->style to
 	be set to a new object */
-	style = gtk_widget_get_style(w);
+
+#if GTK_CHECK_VERSION(3,0,0)
+	GtkStyleContext *styleContext = gtk_widget_get_style_context(w);
+	if (styleContext == NULL)
+		return;
+
+	GdkRGBA colourForeSelected;
+	gtk_style_context_get_color(styleContext, GTK_STATE_FLAG_SELECTED, &colourForeSelected);
+	GdkRGBA colourForeActive;
+	gtk_style_context_get_color(styleContext, GTK_STATE_FLAG_ACTIVE, &colourForeActive);
+	if (!gdk_rgba_equal(&colourForeSelected, &colourForeActive))
+		gtk_widget_override_color(w, GTK_STATE_FLAG_ACTIVE, &colourForeSelected);
+
+	styleContext = gtk_widget_get_style_context(w);
+	if (styleContext == NULL)
+		return;
+
+	GdkRGBA colourBaseSelected;
+	gtk_style_context_get_background_color(styleContext, GTK_STATE_FLAG_SELECTED, &colourBaseSelected);
+	GdkRGBA colourBaseActive;
+	gtk_style_context_get_background_color(styleContext, GTK_STATE_FLAG_ACTIVE, &colourBaseActive);
+	if (!gdk_rgba_equal(&colourBaseSelected, &colourBaseActive))
+		gtk_widget_override_background_color(w, GTK_STATE_FLAG_ACTIVE, &colourBaseSelected);
+#else
+	GtkStyle *style = gtk_widget_get_style(w);
 	if (style == NULL)
 		return;
 	if (!gdk_color_equal(&style->base[GTK_STATE_SELECTED], &style->base[GTK_STATE_ACTIVE]))
 		gtk_widget_modify_base(w, GTK_STATE_ACTIVE, &style->base[GTK_STATE_SELECTED]);
-
 	style = gtk_widget_get_style(w);
 	if (style == NULL)
 		return;
 	if (!gdk_color_equal(&style->text[GTK_STATE_SELECTED], &style->text[GTK_STATE_ACTIVE]))
 		gtk_widget_modify_text(w, GTK_STATE_ACTIVE, &style->text[GTK_STATE_SELECTED]);
+#endif
 }
 
 void ListBoxX::Create(Window &, int, Point, int, bool) {
@@ -2073,7 +2393,11 @@ void ListBoxX::SetFont(Font &scint_font) {
 	// Only do for Pango font as there have been crashes for GDK fonts
 	if (Created() && PFont(scint_font)->pfd) {
 		// Current font is Pango font
+#if GTK_CHECK_VERSION(3,0,0)
+		gtk_widget_override_font(PWidget(list), PFont(scint_font)->pfd);
+#else
 		gtk_widget_modify_font(PWidget(list), PFont(scint_font)->pfd);
+#endif
 	}
 }
 
@@ -2109,14 +2433,27 @@ PRectangle ListBoxX::GetDesiredRect() {
 			gtk_tree_view_get_column(GTK_TREE_VIEW(list), 0);
 		gtk_tree_view_column_cell_get_size(column, NULL,
 			NULL, NULL, &row_width, &row_height);
+#if GTK_CHECK_VERSION(3,0,0)
+		GtkStyleContext *styleContextList = gtk_widget_get_style_context(PWidget(list));
+		GtkBorder padding;
+		gtk_style_context_get_padding(styleContextList, GTK_STATE_FLAG_NORMAL, &padding);
+		height = (rows * row_height
+		          + padding.top + padding.bottom
+		          + 2 * (gtk_container_get_border_width(GTK_CONTAINER(PWidget(list))) + 1));
+#else
 		int ythickness = PWidget(list)->style->ythickness;
 		height = (rows * row_height
 		          + 2 * (ythickness
 		                 + GTK_CONTAINER(PWidget(list))->border_width + 1));
+#endif
 		gtk_widget_set_size_request(GTK_WIDGET(PWidget(list)), -1, height);
 
 		// Get the size of the scroller because we set usize on the window
+#if GTK_CHECK_VERSION(3,0,0)
+		gtk_widget_get_preferred_size(GTK_WIDGET(scroller), NULL, &req);
+#else
 		gtk_widget_size_request(GTK_WIDGET(scroller), &req);
+#endif
 		rc.right = req.width;
 		rc.bottom = req.height;
 
@@ -2230,11 +2567,17 @@ void ListBoxX::Select(int n) {
 
 		// Move the scrollbar to show the selection.
 		int total = Length();
+#if GTK_CHECK_VERSION(3,0,0)
+		GtkAdjustment *adj =
+			gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(list));
+		gfloat value = ((gfloat)n / total) * (gtk_adjustment_get_upper(adj) - gtk_adjustment_get_lower(adj))
+							+ gtk_adjustment_get_lower(adj) - gtk_adjustment_get_page_size(adj) / 2;
+#else
 		GtkAdjustment *adj =
 			gtk_tree_view_get_vadjustment(GTK_TREE_VIEW(list));
 		gfloat value = ((gfloat)n / total) * (adj->upper - adj->lower)
 							+ adj->lower - adj->page_size / 2;
-
+#endif
 		// Get cell height
 		int row_width;
 		int row_height;
@@ -2253,8 +2596,13 @@ void ListBoxX::Select(int n) {
 		}
 		// Clamp it.
 		value = (value < 0)? 0 : value;
+#if GTK_CHECK_VERSION(3,0,0)
+		value = (value > (gtk_adjustment_get_upper(adj) - gtk_adjustment_get_page_size(adj)))?
+					(gtk_adjustment_get_upper(adj) - gtk_adjustment_get_page_size(adj)) : value;
+#else
 		value = (value > (adj->upper - adj->page_size))?
 					(adj->upper - adj->page_size) : value;
+#endif
 
 		// Set it.
 		gtk_adjustment_set_value(adj, value);
@@ -2412,7 +2760,11 @@ void Menu::Show(Point pt, Window &) {
 	GtkMenu *widget = reinterpret_cast<GtkMenu *>(mid);
 	gtk_widget_show_all(GTK_WIDGET(widget));
 	GtkRequisition requisition;
+#if GTK_CHECK_VERSION(3,0,0)
+	gtk_widget_get_preferred_size(GTK_WIDGET(widget), NULL, &requisition);
+#else
 	gtk_widget_size_request(GTK_WIDGET(widget), &requisition);
+#endif
 	if ((pt.x + requisition.width) > screenWidth) {
 		pt.x = screenWidth - requisition.width;
 	}
