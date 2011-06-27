@@ -11,6 +11,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <time.h>
+#include <limits.h>
 
 #undef _WIN32_WINNT
 #define _WIN32_WINNT  0x0500
@@ -20,14 +21,13 @@
 #include <windowsx.h>
 
 #include "Platform.h"
-#include "PlatformRes.h"
 #include "UniConversion.h"
 #include "XPM.h"
 #include "FontQuality.h"
 
 // We want to use multi monitor functions, but via LoadLibrary etc
 // Luckily microsoft has done the heavy lifting for us, so we'll just use their stub functions!
-#if (defined(_MSC_VER) && (MSC_VER > 1200)) || defined(__BORLANDC__)
+#if defined(_MSC_VER) && (_MSC_VER > 1200)
 #define COMPILE_MULTIMON_STUBS
 #include "MultiMon.h"
 #endif
@@ -80,7 +80,7 @@ static HINSTANCE hinstPlatformRes = 0;
 static bool onNT = false;
 static HMODULE hDLLImage = 0;
 static AlphaBlendSig AlphaBlendFn = 0;
-
+static HCURSOR reverseArrowCursor = NULL;
 
 bool IsNT() {
 	return onNT;
@@ -442,7 +442,7 @@ SurfaceImpl::SurfaceImpl() :
 	bitmap(0), bitmapOld(0),
 	paletteOld(0) {
 	// Windows 9x has only a 16 bit coordinate system so break after 30000 pixels
-	maxWidthMeasure = IsNT() ? 1000000 : 30000;
+	maxWidthMeasure = IsNT() ? INT_MAX : 30000;
 	// There appears to be a 16 bit string length limit in GDI on NT and a limit of
 	// 8192 characters on Windows 95.
 	maxLenText = IsNT() ? 65535 : 8192;
@@ -1103,6 +1103,47 @@ void Window::SetFont(Font &font) {
 		reinterpret_cast<WPARAM>(font.GetID()), 0);
 }
 
+static void FlipBitmap(HBITMAP bitmap, int width, int height) {
+	HDC hdc = ::CreateCompatibleDC(NULL);
+	if (hdc != NULL) {
+		HGDIOBJ prevBmp = ::SelectObject(hdc, bitmap);
+		::StretchBlt(hdc, width - 1, 0, -width, height, hdc, 0, 0, width, height, SRCCOPY);
+		::SelectObject(hdc, prevBmp);
+		::DeleteDC(hdc);
+	}
+}
+
+static HCURSOR GetReverseArrowCursor() {
+	if (reverseArrowCursor != NULL)
+		return reverseArrowCursor;
+
+	::EnterCriticalSection(&crPlatformLock);
+	HCURSOR cursor = reverseArrowCursor;
+	if (cursor == NULL) {
+		cursor = ::LoadCursor(NULL, IDC_ARROW);
+		ICONINFO info;
+		if (::GetIconInfo(cursor, &info)) {
+			BITMAP bmp;
+			if (::GetObject(info.hbmMask, sizeof(bmp), &bmp)) {
+				FlipBitmap(info.hbmMask, bmp.bmWidth, bmp.bmHeight);
+				if (info.hbmColor != NULL)
+					FlipBitmap(info.hbmColor, bmp.bmWidth, bmp.bmHeight);
+				info.xHotspot = (DWORD)bmp.bmWidth - 1 - info.xHotspot;
+
+				reverseArrowCursor = ::CreateIconIndirect(&info);
+				if (reverseArrowCursor != NULL)
+					cursor = reverseArrowCursor;
+			}
+
+			::DeleteObject(info.hbmMask);
+			if (info.hbmColor != NULL)
+				::DeleteObject(info.hbmColor);
+		}
+	}
+	::LeaveCriticalSection(&crPlatformLock);
+	return cursor;
+}
+
 void Window::SetCursor(Cursor curs) {
 	switch (curs) {
 	case cursorText:
@@ -1123,19 +1164,8 @@ void Window::SetCursor(Cursor curs) {
 	case cursorHand:
 		::SetCursor(::LoadCursor(NULL,IDC_HAND));
 		break;
-	case cursorReverseArrow: {
-			if (!hinstPlatformRes)
-				hinstPlatformRes = ::GetModuleHandle(TEXT("Scintilla"));
-			if (!hinstPlatformRes)
-				hinstPlatformRes = ::GetModuleHandle(TEXT("SciLexer"));
-			if (!hinstPlatformRes)
-				hinstPlatformRes = ::GetModuleHandle(NULL);
-			HCURSOR hcursor = ::LoadCursor(hinstPlatformRes, MAKEINTRESOURCE(IDC_MARGIN));
-			if (hcursor)
-				::SetCursor(hcursor);
-			else
-				::SetCursor(::LoadCursor(NULL,IDC_ARROW));
-		}
+	case cursorReverseArrow:
+		::SetCursor(GetReverseArrowCursor());
 		break;
 	case cursorArrow:
 	case cursorInvalid:	// Should not occur, but just in case.
@@ -2306,6 +2336,8 @@ void Platform_Initialise(void *hInstance) {
 }
 
 void Platform_Finalise() {
+	if (reverseArrowCursor != NULL)
+		::DestroyCursor(reverseArrowCursor);
 	ListBoxX_Unregister();
 	::DeleteCriticalSection(&crPlatformLock);
 }

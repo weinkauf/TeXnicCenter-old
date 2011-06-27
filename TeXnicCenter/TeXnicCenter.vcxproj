@@ -314,6 +314,7 @@
     <ClCompile Include="BibItem.cpp" />
     <ClCompile Include="BibTeXDocument.cpp" />
     <ClCompile Include="BiBTeXEntry.cpp" />
+    <ClCompile Include="BibTeXEntryType.cpp" />
     <ClCompile Include="BiBTeXFile.cpp" />
     <ClCompile Include="BibTeXOutputFilter.cpp" />
     <ClCompile Include="BibTeXView.cpp" />
@@ -342,8 +343,9 @@
     <ClCompile Include="FileClean.cpp" />
     <ClCompile Include="FileCleanConfirmDialog.cpp" />
     <ClCompile Include="filegrep.cpp" />
-    <ClCompile Include="fileview.cpp" />
+    <ClCompile Include="FileTreeCtrl.cpp" />
     <ClCompile Include="FileViewEx.cpp" />
+    <ClCompile Include="FileViewPane.cpp" />
     <ClCompile Include="findinfilesdialog.cpp" />
     <ClCompile Include="FindReplaceDlg.cpp" />
     <ClCompile Include="FontOccManager.cpp" />
@@ -357,6 +359,14 @@
     <ClCompile Include="inserttabulardialog.cpp" />
     <ClCompile Include="IProject.cpp" />
     <ClCompile Include="IProjectWizard.cpp" />
+    <ClCompile Include="ItemIDList.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Template|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="itempropertydialog.cpp" />
     <ClCompile Include="LabelDragSource.cpp" />
     <ClCompile Include="LaTeXCommand.cpp" />
@@ -424,6 +434,8 @@
     <ClCompile Include="RegistryStack.cpp" />
     <ClCompile Include="ScintillaCtrl.cpp" />
     <ClCompile Include="ScintillaDocView.cpp" />
+    <ClCompile Include="SearchToolBarEditButton.cpp" />
+    <ClCompile Include="SearchToolBarEditCtrl.cpp" />
     <ClCompile Include="ShadowWindow.cpp" />
     <ClCompile Include="ShellView.cpp" />
     <ClCompile Include="SortListCtrl.cpp" />
@@ -471,6 +483,7 @@
     <ClInclude Include="BibItem.h" />
     <ClInclude Include="BibTeXDocument.h" />
     <ClInclude Include="BiBTeXEntry.h" />
+    <ClInclude Include="BibTeXEntryType.h" />
     <ClInclude Include="BiBTeXFile.h" />
     <ClInclude Include="BibTeXOutputFilter.h" />
     <ClInclude Include="BibTeXView.h" />
@@ -502,8 +515,9 @@
     <ClInclude Include="FileClean.h" />
     <ClInclude Include="FileCleanConfirmDialog.h" />
     <ClInclude Include="filegrep.h" />
-    <ClInclude Include="fileview.h" />
+    <ClInclude Include="FileTreeCtrl.h" />
     <ClInclude Include="FileViewEx.h" />
+    <ClInclude Include="FileViewPane.h" />
     <ClInclude Include="findinfilesdialog.h" />
     <ClInclude Include="FindReplaceDlg.h" />
     <ClInclude Include="FontOccManager.h" />
@@ -517,6 +531,7 @@
     <ClInclude Include="inserttabulardialog.h" />
     <ClInclude Include="IProject.h" />
     <ClInclude Include="IProjectWizard.h" />
+    <ClInclude Include="ItemIDList.h" />
     <ClInclude Include="itempropertydialog.h" />
     <ClInclude Include="LabelDragSource.h" />
     <ClInclude Include="LaTeXCommand.h" />
@@ -592,6 +607,8 @@
     <ClInclude Include="RunTimeHelper.h" />
     <ClInclude Include="ScintillaCtrl.h" />
     <ClInclude Include="ScintillaDocView.h" />
+    <ClInclude Include="SearchToolBarEditButton.h" />
+    <ClInclude Include="SearchToolBarEditCtrl.h" />
     <ClInclude Include="ShellView.h" />
     <ClInclude Include="SortListCtrl.h" />
     <ClInclude Include="SpellCheckDlg.h" />
@@ -1160,6 +1177,14 @@ SubWCRev . "%(FullPath)" "%(RootDir)%(Directory)\Version.h"
     </ProjectReference>
     <ProjectReference Include="..\Scintilla\vcbuild\SciLexer.vcxproj">
       <Project>{08c13851-869a-49a9-bc48-cbd0779a2280}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Shared\Shared.vcxproj">
+      <Project>{3a301d39-a50c-4d6e-adc1-2ec869ca78db}</Project>
+      <Private>true</Private>
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+      <CopyLocalSatelliteAssemblies>false</CopyLocalSatelliteAssemblies>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
     </ProjectReference>
     <ProjectReference Include="..\TeXnicCenterObjects\Source\TeXnicCenterObjects.vcxproj">
       <Project>{7d010430-948a-4400-85c4-7d18cb92068f}</Project>
