@@ -702,6 +702,7 @@ public:
   int PropertyType(const char* name, BOOL bDirect = TRUE);
   int DescribeProperty(const char* name, char* description, BOOL bDirect = TRUE);
   int DescribeKeyWordSets(char* descriptions, BOOL bDirect = TRUE);
+  void ShowCursor(bool show, bool direct = true);
 
 protected:
   DECLARE_DYNAMIC(CScintillaCtrl)

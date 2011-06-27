@@ -140,7 +140,7 @@
       <LinkLibraryDependencies>true</LinkLibraryDependencies>
     </ProjectReference>
     <Link>
-      <AdditionalDependencies>shlwapi.lib;mpr.lib;htmlhelp.lib;msxml2.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;mpr.lib;htmlhelp.lib;msxml2.lib;uxtheme.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>comctl32.dll;uxtheme.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <SubSystem>Windows</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
@@ -188,7 +188,7 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>shlwapi.lib;mpr.lib;htmlhelp.lib;msxml2.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;mpr.lib;htmlhelp.lib;msxml2.lib;uxtheme.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>comctl32.dll;uxtheme.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <SubSystem>Windows</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
@@ -235,7 +235,7 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>shlwapi.lib;mpr.lib;htmlhelp.lib;msxml2.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;mpr.lib;htmlhelp.lib;msxml2.lib;uxtheme.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <DelayLoadDLLs>comctl32.dll;uxtheme.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -282,7 +282,7 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>shlwapi.lib;mpr.lib;htmlhelp.lib;msxml2.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;mpr.lib;htmlhelp.lib;msxml2.lib;uxtheme.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <DelayLoadDLLs>comctl32.dll;uxtheme.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -293,6 +293,16 @@
       <Command>
       </Command>
     </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">
+    <Link>
+      <AdditionalDependencies>shlwapi.lib;mpr.lib;htmlhelp.lib;msxml2.lib;uxtheme.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Template|x64'">
+    <Link>
+      <AdditionalDependencies>shlwapi.lib;mpr.lib;htmlhelp.lib;msxml2.lib;uxtheme.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="aboutbox.cpp" />
@@ -333,8 +343,9 @@
     <ClCompile Include="FileClean.cpp" />
     <ClCompile Include="FileCleanConfirmDialog.cpp" />
     <ClCompile Include="filegrep.cpp" />
-    <ClCompile Include="fileview.cpp" />
+    <ClCompile Include="FileTreeCtrl.cpp" />
     <ClCompile Include="FileViewEx.cpp" />
+    <ClCompile Include="FileViewPane.cpp" />
     <ClCompile Include="findinfilesdialog.cpp" />
     <ClCompile Include="FindReplaceDlg.cpp" />
     <ClCompile Include="FontOccManager.cpp" />
@@ -348,6 +359,14 @@
     <ClCompile Include="inserttabulardialog.cpp" />
     <ClCompile Include="IProject.cpp" />
     <ClCompile Include="IProjectWizard.cpp" />
+    <ClCompile Include="ItemIDList.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Template|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="itempropertydialog.cpp" />
     <ClCompile Include="LabelDragSource.cpp" />
     <ClCompile Include="LaTeXCommand.cpp" />
@@ -415,6 +434,8 @@
     <ClCompile Include="RegistryStack.cpp" />
     <ClCompile Include="ScintillaCtrl.cpp" />
     <ClCompile Include="ScintillaDocView.cpp" />
+    <ClCompile Include="SearchToolBarEditButton.cpp" />
+    <ClCompile Include="SearchToolBarEditCtrl.cpp" />
     <ClCompile Include="ShadowWindow.cpp" />
     <ClCompile Include="ShellView.cpp" />
     <ClCompile Include="SortListCtrl.cpp" />
@@ -494,8 +515,9 @@
     <ClInclude Include="FileClean.h" />
     <ClInclude Include="FileCleanConfirmDialog.h" />
     <ClInclude Include="filegrep.h" />
-    <ClInclude Include="fileview.h" />
+    <ClInclude Include="FileTreeCtrl.h" />
     <ClInclude Include="FileViewEx.h" />
+    <ClInclude Include="FileViewPane.h" />
     <ClInclude Include="findinfilesdialog.h" />
     <ClInclude Include="FindReplaceDlg.h" />
     <ClInclude Include="FontOccManager.h" />
@@ -509,6 +531,7 @@
     <ClInclude Include="inserttabulardialog.h" />
     <ClInclude Include="IProject.h" />
     <ClInclude Include="IProjectWizard.h" />
+    <ClInclude Include="ItemIDList.h" />
     <ClInclude Include="itempropertydialog.h" />
     <ClInclude Include="LabelDragSource.h" />
     <ClInclude Include="LaTeXCommand.h" />
@@ -584,6 +607,8 @@
     <ClInclude Include="RunTimeHelper.h" />
     <ClInclude Include="ScintillaCtrl.h" />
     <ClInclude Include="ScintillaDocView.h" />
+    <ClInclude Include="SearchToolBarEditButton.h" />
+    <ClInclude Include="SearchToolBarEditCtrl.h" />
     <ClInclude Include="ShellView.h" />
     <ClInclude Include="SortListCtrl.h" />
     <ClInclude Include="SpellCheckDlg.h" />
@@ -1146,11 +1171,9 @@ SubWCRev . "%(FullPath)" "%(RootDir)%(Directory)\Version.h"
     </ProjectReference>
     <ProjectReference Include="..\MFCExt\Source\MFCExt.vcxproj">
       <Project>{049ffaef-6751-42f1-b069-db51bd24911b}</Project>
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
     <ProjectReference Include="..\MSXMLCpp\source\MSXMLCPP.vcxproj">
       <Project>{5e77a852-5e2b-4e6b-b57f-70676f473c93}</Project>
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
     <ProjectReference Include="..\Scintilla\vcbuild\SciLexer.vcxproj">
       <Project>{08c13851-869a-49a9-bc48-cbd0779a2280}</Project>
