@@ -52,7 +52,7 @@ static char THIS_FILE[] = __FILE__;
 /**
  * @brief Generates a string literal that identifies the MiKTeX Yap settings
  *        registry key.
- *        
+ *
  * @param version MiKTeX version, e.g. 2.9.
  */
 #define MIKTEX_YAP_SETTINGS_REG_KEY(version) \
@@ -85,10 +85,13 @@ namespace
 		CString text = name;
 
 #ifdef UNICODE
+#pragma warning(push)
+#pragma warning(disable: 4428) // universal-character-name encountered in source
 		if (RunTimeHelper::IsVista()) {
 			const wchar_t* ch = L"\u21E8"; // Some nice arrow, only for Vista or higher
 			text.Replace(_T("=>"),ch);
 		}
+#pragma warning(pop)
 #endif // UNICODE
 		return text;
 	}
@@ -487,7 +490,7 @@ void COutputWizard::LookForPs()
 	m_wndPagePsViewer.m_strPath = strPSViewer;
 
 	strPSViewer.MakeUpper();
-	if (strPSViewer.Find(_T("GSVIEW32.EXE")) > -1)
+	if (strPSViewer.Find(_T("GSVIEW32.EXE")) > -1 || strPSViewer.Find(_T("GSVIEW64.EXE")) > -1)
 	{
 		m_wndPagePsViewer.m_strSingleInstanceOption = _T("-e");
 
@@ -576,12 +579,12 @@ void COutputWizard::LookForPdf()
 	// Detect SumatraPDF
 	ATL::CRegKey reg;
 	
-	if (reg.Open(HKEY_LOCAL_MACHINE,_T("Software\\SumatraPDF"),
-		KEY_READ) == ERROR_SUCCESS)
+	if (reg.Open(HKEY_LOCAL_MACHINE,_T("Software\\SumatraPDF"), KEY_READ) == ERROR_SUCCESS
+		|| reg.Open(HKEY_LOCAL_MACHINE,_T("Software\\Wow6432Node\\SumatraPDF"), KEY_READ) == ERROR_SUCCESS)
 	{
 		ULONG length = MAX_PATH;		
 
-		if (reg.QueryStringValue(_T("Install_Dir"),sumatra_path_.GetBuffer(length),&length) == ERROR_SUCCESS) 
+		if (reg.QueryStringValue(_T("Install_Dir"),sumatra_path_.GetBuffer(length),&length) == ERROR_SUCCESS)
 		{
 			sumatra_path_.ReleaseBuffer(length);
 			sumatra_path_ = CPathTool::Cat(sumatra_path_,_T("SumatraPDF.exe"));
@@ -659,7 +662,10 @@ void COutputWizard::ShowInformation()
 	m_wndPageFinish.m_strList.Empty();
 
 #ifdef UNICODE
+#pragma warning(push)
+#pragma warning(disable: 4428) // universal-character-name encountered in source
 	const CString prefix(_T("\u2022 "));
+#pragma warning(pop)
 #else
 	const CString prefix(_T("- "));
 #endif // UNICODE
@@ -707,7 +713,7 @@ void COutputWizard::GenerateOutputProfiles()
 	strPDFLatexOptions += defaultInputPlaceholder;
 
 	// - Only MiKTeX supports the -max-print-line=N feature
-	if (distribution_ == MiKTeX) 
+	if (distribution_ == MiKTeX)
 	{
 		// Put the options before the input file placeholder
 		strLatexOptions = _T("-max-print-line=120 ") + strLatexOptions;
@@ -759,7 +765,7 @@ void COutputWizard::GenerateOutputProfiles()
 		}
 
 		// DVI => PDF
-		if (dvipdfm_installed_) 
+		if (dvipdfm_installed_)
 		{
 			strProfile = GetProfileName(STE_OUTPUTWIZARD_DVIPDFMTYPE);
 
@@ -899,13 +905,13 @@ void COutputWizard::GenerateOutputProfiles()
 
 	// LuaLaTeX => PDF
 	if (lualatexInstalled_) {
-		GeneratePDFProfile(GetProfileName(STE_OUTPUTWIZARD_PDFVIALUALATEX), 
+		GeneratePDFProfile(GetProfileName(STE_OUTPUTWIZARD_PDFVIALUALATEX),
 			strPDFLatexOptions,m_wndPagePdfViewer.GetViewerPath(), LuaLaTeXFileName);
 	}
 
 	// XeLaTeX => PDF
 	if (xelatexInstalled_) {
-		GeneratePDFProfile(GetProfileName(STE_OUTPUTWIZARD_PDFVIAXELATEX), 
+		GeneratePDFProfile(GetProfileName(STE_OUTPUTWIZARD_PDFVIAXELATEX),
 			strPDFLatexOptions,m_wndPagePdfViewer.GetViewerPath(), XeLaTeXFileName);
 	}
 }
@@ -981,9 +987,26 @@ void COutputWizard::SetupAcrobatDDE( CProfile &p )
 	CProfile::CCommand profileCmd;
 	profileCmd.SetActiveCommand(CProfile::CCommand::typeDde);
 
+	//Get the version of the targeted Adobe Reader/Acrobat
+	// in order to properly setup the DDE server name
+	CString DDEServerName(_T("acroview"));
+	const tregex regexReaderVersion(_T(".*\\\\Reader ([\\d]+)\\..*"));
+	const tregex regexAcrobatVersion(_T(".*\\\\Acrobat ([\\d]+)\\..*"));
+	std::tr1::match_results<LPCTSTR> what;
+	LPCTSTR lpStart = m_wndPagePdfViewer.m_strPath;
+	LPCTSTR lpEnd = lpStart + m_wndPagePdfViewer.m_strPath.GetLength();
+	if (regex_search(lpStart, lpEnd, what, regexReaderVersion))
+	{
+		DDEServerName = CString(_T("acroview")) + _T("R") + CString(what[1].first, what[1].second - what[1].first);
+	}
+	else if (regex_search(lpStart, lpEnd, what, regexAcrobatVersion))
+	{
+		DDEServerName = CString(_T("acroview")) + _T("A") + CString(what[1].first, what[1].second - what[1].first);
+	}
+
 	cmd.SetExecutable(m_wndPagePdfViewer.m_strPath);
 	cmd.SetCommand(_T("[DocOpen(\"%bm.pdf\")][FileOpen(\"%bm.pdf\")]"));
-	cmd.SetServer(_T("acroview"),_T("control"));
+	cmd.SetServer(DDEServerName, _T("control"));
 	profileCmd.SetDdeCommand(cmd);
 	p.SetViewProjectCmd(profileCmd);
 
@@ -1077,40 +1100,46 @@ const CString COutputWizard::FindMiKTeXInstallLocation()
 	paths.reserve(10);
 
 	LPCTSTR const mikbin = _T("miktex\\bin");
+	LPCTSTR const mikbin64 = _T("miktex\\bin\\x64");
 
 	ATL::CRegKey reg;
 
-	// Known (future) MiKTeX versions
-	const CString versions[] = { 
-		_T("MiKTeX 2.9"), 
-		_T("MiKTeX 2.8"), 
+	// Known (future) MiKTeX versions - prefering newer ones
+	const CString versions[] = {
+		_T("MiKTeX 2.9"),
+		_T("MiKTeX 2.8"),
 		_T("MiKTeX 2.7")
 	};
 
-	const int count = sizeof(versions) / sizeof(*versions);
+	// Possible locations in the registry - as of today (30th July 2011), a 64 Bit mikTeX 2.9 writes its uninstall info into the first path
+	const CString registrylocations[] = {
+		_T("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"),
+		_T("Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\")
+	};
 
-	for (int i = 0; i < count; ++i)
+	const int NumVersions = sizeof(versions) / sizeof(*versions);
+	const int NumRegLoc = sizeof(registrylocations) / sizeof(*registrylocations);
+
+	for (int i = 0; i < NumVersions; i++)
 	{
-		const CString key = 
-#ifdef _WIN64
-			_T("Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\") 
-#else
-			_T("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\") 
-#endif
-			+ versions[i];
-
-		if (reg.Open(HKEY_LOCAL_MACHINE, key ,KEY_READ) == ERROR_SUCCESS)
+		for(int j = 0; j < NumRegLoc; j++)
 		{
-			TCHAR path[MAX_PATH];
-			ULONG length = MAX_PATH;
+			const CString key = registrylocations[j] + versions[i];
 
-			if (reg.QueryStringValue(_T("InstallLocation"),path,&length) == ERROR_SUCCESS)
+			if (reg.Open(HKEY_LOCAL_MACHINE, key ,KEY_READ) == ERROR_SUCCESS)
 			{
-				path[length] = 0;
-				paths.push_back(CPathTool::Cat(path,mikbin));
-			}
+				TCHAR path[MAX_PATH];
+				ULONG length = MAX_PATH;
 
-			reg.Close();
+				if (reg.QueryStringValue(_T("InstallLocation"),path,&length) == ERROR_SUCCESS)
+				{
+					path[length] = 0;
+					paths.push_back(CPathTool::Cat(path, mikbin64)); //We prefer a 64 Bit version, if available
+					paths.push_back(CPathTool::Cat(path, mikbin));
+				}
+
+				reg.Close();
+			}
 		}
 	}
 
@@ -1150,7 +1179,7 @@ const CString COutputWizard::FindTeXLiveInstallLocation()
 	{
 		ULONG length = MAX_PATH;
 
-		if (reg.QueryStringValue(_T("UninstallString"),strPath.GetBuffer(length),&length) == ERROR_SUCCESS) 
+		if (reg.QueryStringValue(_T("UninstallString"),strPath.GetBuffer(length),&length) == ERROR_SUCCESS)
 		{
 			strPath.ReleaseBuffer(length);
 			strPath.Trim(_T('"')); // Remove the leading and trailing "
@@ -1178,7 +1207,7 @@ const CString COutputWizard::FindTeXLiveInstallLocation()
 			LPCTSTR const key = _T("DisplayName");
 			CString name;
 
-			if (reg.QueryStringValue(key,0,&length) == ERROR_SUCCESS) 
+			if (reg.QueryStringValue(key,0,&length) == ERROR_SUCCESS)
 			{
 				if (reg.QueryStringValue(key,name.GetBuffer(length),&length) == ERROR_SUCCESS)
 					name.ReleaseBuffer(length);
