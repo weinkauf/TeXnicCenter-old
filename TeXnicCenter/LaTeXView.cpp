@@ -63,9 +63,9 @@ public:
 	}
 
 	/* Command was selected */
-	virtual void OnACCommandSelect(const CLaTeXCommand *cmd)
+	virtual void OnACCommandSelect(const CLaTeXCommand* cmd, const TCHAR AdditionalInsertChar = _T(''))
 	{
-		p->OnACCommandSelect(cmd);
+		p->OnACCommandSelect(cmd, AdditionalInsertChar);
 	}
 
 	/* Auto complete was cancelled */
@@ -424,7 +424,7 @@ void LaTeXView::HideAdvice()
 
 #pragma region Message handlers for auto complete listbox
 
-void LaTeXView::OnACCommandSelect(const CLaTeXCommand* cmd)
+void LaTeXView::OnACCommandSelect(const CLaTeXCommand* cmd, const TCHAR AdditionalInsertChar)
 {
 	GetCtrl().BeginUndoAction();
 
@@ -450,11 +450,20 @@ void LaTeXView::OnACCommandSelect(const CLaTeXCommand* cmd)
 	GetCtrl().ReplaceSel(InsertString);
 	const long s = GetCtrl().GetSelectionStart();
 	const long e = GetCtrl().GetSelectionEnd();
-	GetCtrl().SetSel(-1,s); // drop selection	
+	GetCtrl().SetSel(-1,s); // drop selection
+	bool bTryCursorPositioning = true;
+
+	//Add additional char
+	if (AdditionalInsertChar != _T('')) {
+		const TCHAR text[] = {static_cast<TCHAR>(AdditionalInsertChar), 0};
+		GetCtrl().InsertText(-1, text);
+		GetCtrl().SetSel(-1, GetCtrl().GetCurrentPos() + 1);
+		bTryCursorPositioning = false; //We obviously want to be where we just added this char
+	}
 
 	bool isEnv = cmd->GetExpandAfter().GetLength() && cmd->GetExpandBefore().GetLength();
 
-	if (!isEnv) {
+	if (!isEnv && bTryCursorPositioning) {
 		bool bSetPosition = false;
 
 		//If a command was inserted and it contains a brace, we might want to go there
@@ -481,7 +490,7 @@ void LaTeXView::OnACCommandSelect(const CLaTeXCommand* cmd)
 
 	Reindent(initial_line_count, start_line);
 
-	if (isEnv) {
+	if (isEnv && bTryCursorPositioning) {
 		// env was inserted -> place cursor at end of next row
 		// but only after the newly inserted environment has been correctly indented
 		long l = GetCtrl().LineFromPosition(origs);
@@ -513,29 +522,25 @@ void LaTeXView::OnACCommandCancelled()
 
 		old_pos_start_ = old_pos_end_ = -1;
 		autocompletion_active_ = false;
-		RestoreFocus();
+		SetFocus();
 	}
-}
-
-void LaTeXView::RestoreFocus()
-{
-	SetFocus();
 }
 
 void LaTeXView::OnACChar(UINT nKey, UINT /*nRepCount*/, UINT /*nFlags*/)
 {
-	if (autocompletion_list_ && autocompletion_list_->IsWindowVisible()) {
+	if (autocompletion_list_ && autocompletion_list_->IsWindowVisible())
+	{
+		//Save the anchor and current position of the selection
+		long anchor = GetCtrl().GetAnchor();
 		long pos = GetCtrl().GetCurrentPos();
-		const TCHAR text[] = {static_cast<TCHAR>(nKey),0};
 
-		GetCtrl().InsertText(pos,text);
-		GetCtrl().GotoPos(pos + 1);
-		//CPoint ps,pe,dummy;
-		//GetSelection(ps,pe);
-		//SetSelection(pe,pe);
-		//CCrystalEditViewEx::OnChar(nKey,nRepCount,nFlags);
-		//GetSelection(dummy,pe); /* retrieve new cursor pos */
-		//SetSelection(ps,pe); /* restore selection */
+		//Insert the character at the current position
+		const TCHAR text[] = {static_cast<TCHAR>(nKey),0};
+		GetCtrl().InsertText(-1, text); //-1 inserts at current caret position
+
+		//Restore selection, but including the newly typed character
+		GetCtrl().SetAnchor(anchor);
+		GetCtrl().SetCurrentPos(pos + 1);
 	}
 }
 
@@ -543,29 +548,20 @@ void LaTeXView::OnACBackspace()
 {
 	if (autocompletion_list_ && autocompletion_list_->IsWindowVisible())
 	{
-		//CPoint ps,pe,dummy;
-		//GetSelection(ps,pe);
-		long s = GetCtrl().GetCurrentPos();
-		
-		if (s > 0) {
-			GetCtrl().SetSel(s - 1,s);
-			GetCtrl().ReplaceSel(_T(""));
-			GetCtrl().SetSel(-1,GetCtrl().GetCurrentPos());
-		}
+		//Save the anchor and current position of the selection
+		long anchor = GetCtrl().GetAnchor();
+		long pos = GetCtrl().GetCurrentPos();
 
-		//dummy.x = pe.x - 1;
-		//dummy.y = pe.y;
-		//SetSelection(dummy,pe);
-		////CCrystalEditViewEx::OnChar(VK_BACK, 1, 0);
-		//if (ReplaceSelection(_T("")))   /* WÜRG !!!! */
-		//{
-		//	GetSelection(dummy,pe); /* retrieve new cursor pos */
-		//	SetSelection(ps,pe); /* restore selection */
-		//}
-		//else
-		//{
-		//	TRACE("Could not delete selection!\n");
-		//}
+		//If there is still something to delete
+		if (pos > 0 && pos > anchor)
+		{
+			// - select the character to be removed
+			GetCtrl().SetSel(pos - 1, pos);
+			// - remove the character
+			GetCtrl().ReplaceSel(_T(""));
+			// - restore selection
+			GetCtrl().SetSel(anchor, GetCtrl().GetCurrentPos());
+		}
 	}
 }
 
@@ -654,39 +650,37 @@ void LaTeXView::GetWordBeforeCursor(CString& strKeyword, long& a, bool bSelect /
 
 			GetCtrl().GetTextRange(&range);
 
-			if (true) {
-				long EndX = l - 1;
-				long CurrentX = EndX;
+			long EndX = l - 1;
+			long CurrentX = EndX;
 
-				//Backward search: go to first character of the current word
-				for (; CurrentX >= 0; CurrentX--) {
-					if (!IsAutoCompletionCharacter(data[CurrentX])) {
-						++CurrentX; //This is the last valid TCHAR
-						break;
-					}
+			//Backward search: go to first character of the current word
+			for (; CurrentX >= 0; CurrentX--) {
+				if (!IsAutoCompletionCharacter(data[CurrentX])) {
+					++CurrentX; //This is the last valid TCHAR
+					break;
 				}
-
-				if (CurrentX < 0)
-					CurrentX = 0;
-
-				if (CurrentX <= EndX) {
-					ASSERT(CurrentX >= 0);
-					ASSERT(EndX - CurrentX >= 0);
-
-					std::vector<wchar_t> conv;
-					UTF8toUTF16(range.lpstrText + CurrentX, EndX - CurrentX + 1, conv);
-
-					if (!conv.empty())
-						strKeyword.SetString(&conv[0], static_cast<int>(conv.size()));
-					
-					if (bSelect)
-						GetCtrl().SetSel(start + CurrentX,pos);
-
-					a = start + CurrentX;
-				}
-				else
-					strKeyword.Empty();
 			}
+
+			if (CurrentX < 0)
+				CurrentX = 0;
+
+			if (CurrentX <= EndX) {
+				ASSERT(CurrentX >= 0);
+				ASSERT(EndX - CurrentX >= 0);
+
+				std::vector<wchar_t> conv;
+				UTF8toUTF16(range.lpstrText + CurrentX, EndX - CurrentX + 1, conv);
+
+				if (!conv.empty())
+					strKeyword.SetString(&conv[0], static_cast<int>(conv.size()));
+					
+				if (bSelect)
+					GetCtrl().SetSel(start + CurrentX,pos);
+
+				a = start + CurrentX;
+			}
+			else
+				strKeyword.Empty();
 		}
 	}
 }
@@ -694,34 +688,34 @@ void LaTeXView::GetWordBeforeCursor(CString& strKeyword, long& a, bool bSelect /
 bool LaTeXView::IsAutoCompletionCharacter(TCHAR tc)
 {
 	switch (tc) {
-			//All the following chars are allowed in labels.
-			// - but we do not allow all since some of them are rather strange
+		//All the following chars are allowed in labels.
+		// - but we do not allow all since some of them are rather strange
 		case _T('&') :
 		case _T('_') :
 		case _T('-') :
 		case _T('+') :
 		case _T(':') :
-			//case _T('='):
-			//case _T('^'):
-			//case _T('.'):
-			//case _T(';'):
-			//case _T(','): //A comma can be used in \cite{weinkauf04a,weinkauf05b} and we want to see this as two bibkeys
-			//case _T('!'):
-			//case _T('`'):
-			//case _T('´'):
-			//case _T('('): //Especially braces should not be part of a label; this would kill most editor stuff
-			//case _T(')'):
-			//case _T('['):
-			//case _T(']'):
-			//case _T('<'):
-			//case _T('>'):
+		//case _T('='):
+		//case _T('^'):
+		//case _T('.'):
+		//case _T(';'):
+		//case _T(','): //A comma can be used in \cite{weinkauf04a,weinkauf05b} and we want to see this as two bibkeys
+		//case _T('!'):
+		//case _T('`'):
+		//case _T('´'):
+		//case _T('('): //Especially braces should not be part of a label; this would kill most editor stuff
+		//case _T(')'):
+		//case _T('['):
+		//case _T(']'):
+		//case _T('<'):
+		//case _T('>'):
 
-			//All the following chars are allowed in keywords.
+		//All the following chars are allowed in keywords.
 		case _T('\\') :
 		case _T('@') :
 			return TRUE;
 
-			//Be default, labels can consist of numbers and letters; keywords only of letters
+		//By default, labels can consist of numbers and letters; keywords only of letters
 		default:
 			return CharTraitsT::IsAlnum(tc);
 	}
