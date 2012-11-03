@@ -52,7 +52,7 @@ static char THIS_FILE[] = __FILE__;
 /**
  * @brief Generates a string literal that identifies the MiKTeX Yap settings
  *        registry key.
- *        
+ *
  * @param version MiKTeX version, e.g. 2.9.
  */
 #define MIKTEX_YAP_SETTINGS_REG_KEY(version) \
@@ -85,10 +85,13 @@ namespace
 		CString text = name;
 
 #ifdef UNICODE
+#pragma warning(push)
+#pragma warning(disable: 4428) // universal-character-name encountered in source
 		if (RunTimeHelper::IsVista()) {
 			const wchar_t* ch = L"\u21E8"; // Some nice arrow, only for Vista or higher
 			text.Replace(_T("=>"),ch);
 		}
+#pragma warning(pop)
 #endif // UNICODE
 		return text;
 	}
@@ -487,7 +490,7 @@ void COutputWizard::LookForPs()
 	m_wndPagePsViewer.m_strPath = strPSViewer;
 
 	strPSViewer.MakeUpper();
-	if (strPSViewer.Find(_T("GSVIEW32.EXE")) > -1)
+	if (strPSViewer.Find(_T("GSVIEW32.EXE")) > -1 || strPSViewer.Find(_T("GSVIEW64.EXE")) > -1)
 	{
 		m_wndPagePsViewer.m_strSingleInstanceOption = _T("-e");
 
@@ -518,7 +521,7 @@ void COutputWizard::LookForPdf()
 	//  Path: HKEY_LOCAL_MACHINE\SOFTWARE\AFPL Ghostscript\<version>
 	//  Path: HKEY_LOCAL_MACHINE\SOFTWARE\GPL Ghostscript\<version>
 	//  Entry: GS_DLL=f:\prog\gstools\gs\gs8.12\bin\gsdll32.dll
-	// We need the directory of GS_DLL. There we find gswin32c.exe.
+	// We need the directory of GS_DLL. There we find gswin32c.exe or gswin64c.exe.
 	m_bGhostscriptInstalled = false;
 	RegistryStack gsReg(true,true); //HKEY_LOCAL_MACHINE, ReadOnly
 
@@ -558,12 +561,20 @@ void COutputWizard::LookForPdf()
 		{
 			if (gsReg.Read(_T("GS_DLL"),m_strGhostscriptPath))
 			{
-				m_strGhostscriptPath = CPathTool::Cat(CPathTool::GetDirectory(m_strGhostscriptPath),_T("gswin32c.exe"));
-
+				m_strGhostscriptPath = CPathTool::Cat(CPathTool::GetDirectory(m_strGhostscriptPath),_T("gswin64c.exe"));
 				if (ff.FindFile(m_strGhostscriptPath))
 				{
 					m_bGhostscriptInstalled = true;
 					m_bGhostscriptViaPS2PDF = false;
+				}
+				else
+				{
+					m_strGhostscriptPath = CPathTool::Cat(CPathTool::GetDirectory(m_strGhostscriptPath),_T("gswin32c.exe"));
+					if (ff.FindFile(m_strGhostscriptPath))
+					{
+						m_bGhostscriptInstalled = true;
+						m_bGhostscriptViaPS2PDF = false;
+					}
 				}
 
 				ff.Close();
@@ -575,13 +586,13 @@ void COutputWizard::LookForPdf()
 
 	// Detect SumatraPDF
 	ATL::CRegKey reg;
-	
-	if (reg.Open(HKEY_LOCAL_MACHINE,_T("Software\\SumatraPDF"),
-		KEY_READ) == ERROR_SUCCESS)
+
+	if (reg.Open(HKEY_LOCAL_MACHINE,_T("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\SumatraPDF"), KEY_READ) == ERROR_SUCCESS
+		|| reg.Open(HKEY_LOCAL_MACHINE,_T("SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\SumatraPDF"), KEY_READ) == ERROR_SUCCESS)
 	{
 		ULONG length = MAX_PATH;		
 
-		if (reg.QueryStringValue(_T("Install_Dir"),sumatra_path_.GetBuffer(length),&length) == ERROR_SUCCESS) 
+		if (reg.QueryStringValue(_T("InstallLocation"),sumatra_path_.GetBuffer(length),&length) == ERROR_SUCCESS)
 		{
 			sumatra_path_.ReleaseBuffer(length);
 			sumatra_path_ = CPathTool::Cat(sumatra_path_,_T("SumatraPDF.exe"));
@@ -593,6 +604,28 @@ void COutputWizard::LookForPdf()
 			sumatra_path_.ReleaseBuffer(0);
 
 		reg.Close();
+	}
+	else
+	{
+		//Older versions of Sumatra wrote their installation directory here:	
+		if (reg.Open(HKEY_LOCAL_MACHINE,_T("Software\\SumatraPDF"), KEY_READ) == ERROR_SUCCESS
+			|| reg.Open(HKEY_LOCAL_MACHINE,_T("Software\\Wow6432Node\\SumatraPDF"), KEY_READ) == ERROR_SUCCESS)
+		{
+			ULONG length = MAX_PATH;		
+
+			if (reg.QueryStringValue(_T("Install_Dir"),sumatra_path_.GetBuffer(length),&length) == ERROR_SUCCESS)
+			{
+				sumatra_path_.ReleaseBuffer(length);
+				sumatra_path_ = CPathTool::Cat(sumatra_path_,_T("SumatraPDF.exe"));
+
+				if (CPathTool::Exists(sumatra_path_))
+					sumatra_installed_ = true;
+			}
+			else
+				sumatra_path_.ReleaseBuffer(0);
+
+			reg.Close();
+		}
 	}
 
 	// No GhostScript found?
@@ -659,7 +692,10 @@ void COutputWizard::ShowInformation()
 	m_wndPageFinish.m_strList.Empty();
 
 #ifdef UNICODE
+#pragma warning(push)
+#pragma warning(disable: 4428) // universal-character-name encountered in source
 	const CString prefix(_T("\u2022 "));
+#pragma warning(pop)
 #else
 	const CString prefix(_T("- "));
 #endif // UNICODE
@@ -677,8 +713,6 @@ void COutputWizard::ShowInformation()
 
 	if (m_bPdfLatexInstalled)
 		m_wndPageFinish.m_strList += prefix + GetProfileName(STE_OUTPUTWIZARD_PDFTYPE) + newline;
-
-	// LaTeX => PDF (SumatraPDF)?
 
 	if (m_bGhostscriptInstalled)
 		m_wndPageFinish.m_strList += prefix + GetProfileName(STE_OUTPUTWIZARD_PDFVIAPSTYPE) + newline;
@@ -707,7 +741,7 @@ void COutputWizard::GenerateOutputProfiles()
 	strPDFLatexOptions += defaultInputPlaceholder;
 
 	// - Only MiKTeX supports the -max-print-line=N feature
-	if (distribution_ == MiKTeX) 
+	if (distribution_ == MiKTeX)
 	{
 		// Put the options before the input file placeholder
 		strLatexOptions = _T("-max-print-line=120 ") + strLatexOptions;
@@ -759,7 +793,7 @@ void COutputWizard::GenerateOutputProfiles()
 		}
 
 		// DVI => PDF
-		if (dvipdfm_installed_) 
+		if (dvipdfm_installed_)
 		{
 			strProfile = GetProfileName(STE_OUTPUTWIZARD_DVIPDFMTYPE);
 
@@ -772,7 +806,7 @@ void COutputWizard::GenerateOutputProfiles()
 				if (bExists)
 					m_profiles.Remove(strProfile);
 
-				CPostProcessor dvipdfm(_T("dvipdfm"), dvipdfm_path_,
+				CPProcessor dvipdfm(_T("dvipdfm"), dvipdfm_path_,
 					_T("\"%bm.dvi\""));
 				p.GetPostProcessorArray().Add(dvipdfm);
 				p.SetLaTeXArguments(strPDFLatexOptions); // Use PDF arguments
@@ -806,7 +840,7 @@ void COutputWizard::GenerateOutputProfiles()
 			SetupMakeIndex(p);
 
 			// add post processor dvips
-			CPostProcessor pp(
+			CPProcessor pp(
 				_T("DviPs"),GetDistributionFilePath(_T("dvips.exe")),
 				_T("\"%Bm.dvi\""));
 			p.GetPostProcessorArray().Add(pp);
@@ -866,7 +900,7 @@ void COutputWizard::GenerateOutputProfiles()
 			SetupMakeIndex(p);
 
 			// add post processor dvips
-			CPostProcessor ppDVIPS(
+			CPProcessor ppDVIPS(
 				_T("DviPs (PDF)"),GetDistributionFilePath(_T("dvips.exe")),
 				_T("-P pdf \"%Bm.dvi\""));
 			p.GetPostProcessorArray().Add(ppDVIPS);
@@ -875,7 +909,7 @@ void COutputWizard::GenerateOutputProfiles()
 			if (m_bGhostscriptViaPS2PDF)
 			{
 				//ps2pdf
-				CPostProcessor ppPS2PDF(
+				CPProcessor ppPS2PDF(
 					_T("ps2pdf"), m_strGhostscriptPath,
 					_T("\"%bm.ps\""));
 				p.GetPostProcessorArray().Add(ppPS2PDF);
@@ -883,7 +917,7 @@ void COutputWizard::GenerateOutputProfiles()
 			else
 			{
 				//Ghostscript directly
-				CPostProcessor ppGS(
+				CPProcessor ppGS(
 					_T("Ghostscript (ps2pdf)"),m_strGhostscriptPath,
 					_T("-sPAPERSIZE=a4 -dSAFER -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile=\"%bm.pdf\" -c save pop -f \"%bm.ps\""));
 				p.GetPostProcessorArray().Add(ppGS);
@@ -899,13 +933,13 @@ void COutputWizard::GenerateOutputProfiles()
 
 	// LuaLaTeX => PDF
 	if (lualatexInstalled_) {
-		GeneratePDFProfile(GetProfileName(STE_OUTPUTWIZARD_PDFVIALUALATEX), 
+		GeneratePDFProfile(GetProfileName(STE_OUTPUTWIZARD_PDFVIALUALATEX),
 			strPDFLatexOptions,m_wndPagePdfViewer.GetViewerPath(), LuaLaTeXFileName);
 	}
 
 	// XeLaTeX => PDF
 	if (xelatexInstalled_) {
-		GeneratePDFProfile(GetProfileName(STE_OUTPUTWIZARD_PDFVIAXELATEX), 
+		GeneratePDFProfile(GetProfileName(STE_OUTPUTWIZARD_PDFVIAXELATEX),
 			strPDFLatexOptions,m_wndPagePdfViewer.GetViewerPath(), XeLaTeXFileName);
 	}
 }
@@ -949,10 +983,6 @@ void COutputWizard::AssignPDFViewer(CProfile& p)
 
 void COutputWizard::SetupSumatraDDE( CProfile &p )
 {
-	CDdeCommand cmd;
-	CProfile::CCommand profileCmd;
-	profileCmd.SetActiveCommand(CProfile::CCommand::typeDde);
-
 	CString app;
 	app.ReleaseBuffer(::GetModuleFileName(0,app.GetBuffer(MAX_PATH),MAX_PATH));
 
@@ -961,16 +991,26 @@ void COutputWizard::SetupSumatraDDE( CProfile &p )
 
 	p.SetViewerPath(exec);
 
-	cmd.SetExecutable(m_wndPagePdfViewer.m_strPath);
-	cmd.SetCommand(_T("[ForwardSearch(\"%bm.pdf\",\"%Wc\",%l,0,0,1)]"));
+	CProfile::CCommand ViewOutputCmd;
+	ViewOutputCmd.SetActiveCommand(CProfile::CCommand::typeProcess);
+	CProcessCommand SumatraProcessCmd;
+	SumatraProcessCmd.Set(m_wndPagePdfViewer.m_strPath, _T("\"%bm.pdf\""));
+	ViewOutputCmd.SetProcessCommand(SumatraProcessCmd);
+	p.SetViewProjectCmd(ViewOutputCmd);
 
-	cmd.SetServer(_T("sumatra"),_T("control"));
-	profileCmd.SetDdeCommand(cmd);
+	CDdeCommand SumatraDDECmd;
+	CProfile::CCommand ForwardSearchCmd;
+	ForwardSearchCmd.SetActiveCommand(CProfile::CCommand::typeDde);
 
-	p.SetViewProjectCmd(profileCmd);
-	p.SetViewCurrentCmd(profileCmd);
+	SumatraDDECmd.SetExecutable(m_wndPagePdfViewer.m_strPath);
+	SumatraDDECmd.SetCommand(_T("[ForwardSearch(\"%bm.pdf\",\"%Wc\",%l,0,0,1)]"));
 
-	p.SetViewCloseCmd(profileCmd);
+	SumatraDDECmd.SetServer(_T("sumatra"),_T("control"));
+	ForwardSearchCmd.SetDdeCommand(SumatraDDECmd);
+
+	p.SetViewCurrentCmd(ForwardSearchCmd);
+
+	p.SetViewCloseCmd(CProfile::CCommand());
 	p.SetCloseView(false);
 }
 
@@ -981,9 +1021,35 @@ void COutputWizard::SetupAcrobatDDE( CProfile &p )
 	CProfile::CCommand profileCmd;
 	profileCmd.SetActiveCommand(CProfile::CCommand::typeDde);
 
+	//Get the version of the targeted Adobe Reader/Acrobat
+	// in order to properly setup the DDE server name
+	// (only for versions >= 10; older versions just use "acroview")
+	CString DDEServerName(_T("acroview"));
+	const tregex regexReaderVersion(_T(".*\\\\Reader ([\\d]+)\\..*"));
+	const tregex regexAcrobatVersion(_T(".*\\\\Acrobat ([\\d]+)\\..*"));
+	std::tr1::match_results<LPCTSTR> what;
+	LPCTSTR lpStart = m_wndPagePdfViewer.m_strPath;
+	LPCTSTR lpEnd = lpStart + m_wndPagePdfViewer.m_strPath.GetLength();
+	if (regex_search(lpStart, lpEnd, what, regexReaderVersion))
+	{
+		CString VersionNumberString(what[1].first, what[1].second - what[1].first);
+		if (_wtoi(VersionNumberString) >= 10)
+		{
+			DDEServerName = CString(_T("acroview")) + _T("R") + VersionNumberString;
+		}
+	}
+	else if (regex_search(lpStart, lpEnd, what, regexAcrobatVersion))
+	{
+		CString VersionNumberString(what[1].first, what[1].second - what[1].first);
+		if (_wtoi(VersionNumberString) >= 10)
+		{
+			DDEServerName = CString(_T("acroview")) + _T("A") + VersionNumberString;
+		}
+	}
+
 	cmd.SetExecutable(m_wndPagePdfViewer.m_strPath);
 	cmd.SetCommand(_T("[DocOpen(\"%bm.pdf\")][FileOpen(\"%bm.pdf\")]"));
-	cmd.SetServer(_T("acroview"),_T("control"));
+	cmd.SetServer(DDEServerName, _T("control"));
 	profileCmd.SetDdeCommand(cmd);
 	p.SetViewProjectCmd(profileCmd);
 
@@ -1077,40 +1143,46 @@ const CString COutputWizard::FindMiKTeXInstallLocation()
 	paths.reserve(10);
 
 	LPCTSTR const mikbin = _T("miktex\\bin");
+	LPCTSTR const mikbin64 = _T("miktex\\bin\\x64");
 
 	ATL::CRegKey reg;
 
-	// Known (future) MiKTeX versions
-	const CString versions[] = { 
-		_T("MiKTeX 2.9"), 
-		_T("MiKTeX 2.8"), 
+	// Known (future) MiKTeX versions - prefering newer ones
+	const CString versions[] = {
+		_T("MiKTeX 2.9"),
+		_T("MiKTeX 2.8"),
 		_T("MiKTeX 2.7")
 	};
 
-	const int count = sizeof(versions) / sizeof(*versions);
+	// Possible locations in the registry - as of today (30th July 2011), a 64 Bit mikTeX 2.9 writes its uninstall info into the first path
+	const CString registrylocations[] = {
+		_T("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"),
+		_T("Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\")
+	};
 
-	for (int i = 0; i < count; ++i)
+	const int NumVersions = sizeof(versions) / sizeof(*versions);
+	const int NumRegLoc = sizeof(registrylocations) / sizeof(*registrylocations);
+
+	for (int i = 0; i < NumVersions; i++)
 	{
-		const CString key = 
-#ifdef _WIN64
-			_T("Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\") 
-#else
-			_T("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\") 
-#endif
-			+ versions[i];
-
-		if (reg.Open(HKEY_LOCAL_MACHINE, key ,KEY_READ) == ERROR_SUCCESS)
+		for(int j = 0; j < NumRegLoc; j++)
 		{
-			TCHAR path[MAX_PATH];
-			ULONG length = MAX_PATH;
+			const CString key = registrylocations[j] + versions[i];
 
-			if (reg.QueryStringValue(_T("InstallLocation"),path,&length) == ERROR_SUCCESS)
+			if (reg.Open(HKEY_LOCAL_MACHINE, key ,KEY_READ) == ERROR_SUCCESS)
 			{
-				path[length] = 0;
-				paths.push_back(CPathTool::Cat(path,mikbin));
-			}
+				TCHAR path[MAX_PATH];
+				ULONG length = MAX_PATH;
 
-			reg.Close();
+				if (reg.QueryStringValue(_T("InstallLocation"),path,&length) == ERROR_SUCCESS)
+				{
+					path[length] = 0;
+					paths.push_back(CPathTool::Cat(path, mikbin64)); //We prefer a 64 Bit version, if available
+					paths.push_back(CPathTool::Cat(path, mikbin));
+				}
+
+				reg.Close();
+			}
 		}
 	}
 
@@ -1150,7 +1222,7 @@ const CString COutputWizard::FindTeXLiveInstallLocation()
 	{
 		ULONG length = MAX_PATH;
 
-		if (reg.QueryStringValue(_T("UninstallString"),strPath.GetBuffer(length),&length) == ERROR_SUCCESS) 
+		if (reg.QueryStringValue(_T("UninstallString"),strPath.GetBuffer(length),&length) == ERROR_SUCCESS)
 		{
 			strPath.ReleaseBuffer(length);
 			strPath.Trim(_T('"')); // Remove the leading and trailing "
@@ -1178,7 +1250,7 @@ const CString COutputWizard::FindTeXLiveInstallLocation()
 			LPCTSTR const key = _T("DisplayName");
 			CString name;
 
-			if (reg.QueryStringValue(key,0,&length) == ERROR_SUCCESS) 
+			if (reg.QueryStringValue(key,0,&length) == ERROR_SUCCESS)
 			{
 				if (reg.QueryStringValue(key,name.GetBuffer(length),&length) == ERROR_SUCCESS)
 					name.ReleaseBuffer(length);

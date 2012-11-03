@@ -3948,3 +3948,8 @@ int CScintillaCtrl::DescribeKeyWordSets(char* descriptions, BOOL bDirect)
 {
   return Call(SCI_DESCRIBEKEYWORDSETS, 0, reinterpret_cast<LPARAM>(descriptions), bDirect);
 }
+
+void CScintillaCtrl::ShowCursor(bool show, bool direct /*= true*/)
+{
+  Call(SCI_SHOWCURSOR, show, 0, direct);
+}

@@ -448,6 +448,9 @@ private:
 	/** Regular expression describing insert graphics commands. */
 	const tregex m_regexGraphic;
 
+	/** Regular expressions describing the graphicspath command. */
+	const tregex m_regexGraphicsPath;
+
 	/** Regular expression describing the newcommand command. */
 	const tregex m_regexUserCmd;
 
@@ -465,12 +468,21 @@ private:
 	/** Array containing the index of the actual item representing the depth. */
 	StructureItemContainer::difference_type m_anItem[MAX_DEPTH];
 
+	///Paths to look for graphics
+	std::vector< CString > GraphicPaths;
+
 private:
 	/** Used to control access to the m_aStructureItems-member. */
     CCriticalSection m_csSI;
 
 	/** Actual depth */
 	SSIZE_T m_nDepth;
+
+	///Stack of files while parsing. Needed to prevent infinite loops when the user includes tex-files recursively.
+	std::vector<CString> m_ParsingFilesStack;
+
+	///Base path during parsing
+	CString m_BasePath;
 
 	/** line counter */
 	int m_nLineCount;

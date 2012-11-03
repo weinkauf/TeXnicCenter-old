@@ -43,7 +43,7 @@
 #include "environmentview.h"
 #include "BibView.h"
 #include "BookmarkView.h"
-#include "fileview.h"
+#include "FileViewPane.h"
 #include "ParseOutputView.h"
 #include "OutputDoc.h"
 #include "ErrorListPane.h"
@@ -208,6 +208,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CMDIFrameWndEx)
 	ON_COMMAND(ID_WINDOW_LIST, &CMainFrame::OnWindowList)
 	ON_COMMAND(ID_HELP_FINDER, &CMainFrame::OnHelpSearch)
 	ON_COMMAND(ID_HELP_INDEX, &CMainFrame::OnHelpIndex)
+	//ON_COMMAND(ID_HELP, &CMainFrame::WinHelp)
 	ON_COMMAND(ID_VIEW_FULLSCREEN, &CMainFrame::OnViewFullScreen)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_FULLSCREEN, &CMainFrame::OnUpdateViewFullScreen)
 	ON_COMMAND(ID_HELP_KEYMAPPING, &CMainFrame::OnHelpKeyMapping)
@@ -233,10 +234,10 @@ BEGIN_MESSAGE_MAP(CMainFrame, CMDIFrameWndEx)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_DOCTAB_TOP, &CMainFrame::OnUpdateViewDocTabs)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_DOCTAB_ICONS, &CMainFrame::OnUpdateViewDocTabs)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_DOCTAB_NOTE, &CMainFrame::OnUpdateViewDocTabs)
-	ON_COMMAND(ID_HELP_FINDER, &CMDIFrameWndEx::OnHelpFinder)
-	ON_COMMAND(ID_HELP, &CMDIFrameWndEx::OnHelp)
-	ON_COMMAND(ID_CONTEXT_HELP, CMDIFrameWndEx::OnContextHelp)
-	ON_COMMAND(ID_DEFAULT_HELP, CMDIFrameWndEx::OnHelpFinder)
+	//ON_COMMAND(ID_HELP_FINDER, &CMDIFrameWndEx::OnHelpFinder)
+	//ON_COMMAND(ID_HELP, &CMDIFrameWndEx::OnHelp)
+	//ON_COMMAND(ID_CONTEXT_HELP, CMDIFrameWndEx::OnContextHelp)
+	//ON_COMMAND(ID_DEFAULT_HELP, CMDIFrameWndEx::OnHelpFinder)
 	ON_COMMAND_EX_RANGE(ID_MATH1, ID_MATH16, &CMainFrame::OnToggleCtrlBar)
 	ON_COMMAND_EX(ID_VIEW_MATH, &CMainFrame::OnToggleCtrlBar)
 	ON_UPDATE_COMMAND_UI_RANGE(ID_MATH1, ID_MATH16, &CMainFrame::OnCheckCtrlBarVisible)
@@ -269,6 +270,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CMDIFrameWndEx)
 	ON_COMMAND_EX(ID_VIEW_GREP_1_PANE, &CMainFrame::OnToggleDockingBar)
 	ON_COMMAND_EX(ID_VIEW_GREP_2_PANE, &CMainFrame::OnToggleDockingBar)
 	ON_COMMAND_EX(ID_VIEW_PARSE_PANE, &CMainFrame::OnToggleDockingBar)
+	ON_MESSAGE(WM_COMMANDHELP, &CMainFrame::OnCommandHelp)
 END_MESSAGE_MAP()
 
 const UINT BuildAnimationPane = 1;
@@ -278,6 +280,7 @@ static UINT indicators[] =
 {
 	ID_SEPARATOR, // Statusleistenanzeige
 	IDB_BUILD_ANIMATION, // Build animation
+	ID_EDIT_INDICATOR_SELECTION,
 	ID_EDIT_INDICATOR_POSITION,
 	ID_EDIT_INDICATOR_ENCODING,
 	ID_EDIT_INDICATOR_CRLF,
@@ -291,8 +294,7 @@ static UINT indicators[] =
 CMainFrame::CMainFrame()
 	: m_pContextMenuTargetWindow(NULL)
 	, structure_view_(new StructurePane)
-	, file_view_pane_(new WorkspacePane)
-	, file_view_(new CFileView)
+	, file_view_pane_(new FileViewPane)
 	, env_view_pane_(new WorkspacePane)
 	, env_view_(new CEnvironmentView)
 	, bib_view_pane_(new BibView)
@@ -1264,6 +1266,13 @@ void CMainFrame::OnHelpIndex()
 	HtmlHelp(0, HH_DISPLAY_INDEX);
 }
 
+LRESULT CMainFrame::OnCommandHelp(WPARAM /*wParam*/, LPARAM /*lParam*/)
+{
+	HtmlHelp(0, HH_DISPLAY_TOC);
+	return true;
+}
+
+
 void CMainFrame::DisplayDocumentTabs()
 {
 	CMDITabInfo mdiTabParams;
@@ -1699,21 +1708,19 @@ bool CMainFrame::CreateToolWindows()
 	//Create views
 	CRect rectDummy;
 	rectDummy.SetRectEmpty();
+
 	if (!env_view_->Create(env_view_pane_.get()))
 	{
 		TRACE0("Failed to create environment view\n");
 		return false;
 	}
-	if (!file_view_->Create(file_view_pane_.get()))
-	{
-		TRACE0("Failed to create file view\n");
-		return false;
-	}
+
 	if (!build_view_->Create(rectDummy, this))
 	{
 		TRACE0("Failed to create build output view\n");
 		return false;
 	}
+
 	if (!grep_view_1_->Create(rectDummy, this))
 	{
 		TRACE0("Failed to create find 1 output view\n");
@@ -1737,7 +1744,6 @@ bool CMainFrame::CreateToolWindows()
 	}
 	// - and set them
 	env_view_pane_->SetClient(env_view_.get());
-	file_view_pane_->SetClient(file_view_.get());
 	output_doc_->SetAllViews(build_view_.get(), grep_view_1_.get(), 
 		grep_view_2_.get(), parse_view_.get());
 	build_view_->AttachDoc(output_doc_.get());
@@ -1853,7 +1859,7 @@ const std::vector<CProjectView*> CMainFrame::GetViews()
 	std::vector<CProjectView*> views;
 
 	views.push_back(structure_view_->GetProjectView());
-	views.push_back(file_view_.get());
+	views.push_back(file_view_pane_->GetProjectView());
 	views.push_back(env_view_.get());
 	views.push_back(bib_view_pane_.get());
 	views.push_back(bookmark_view_pane_.get());
