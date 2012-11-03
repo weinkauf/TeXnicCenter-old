@@ -605,8 +605,8 @@ CDocument* COutputDoc::GetActiveDocument() const
 void COutputDoc::OnLatexView()
 {
 	// check if there is an open document
-	LaTeXView *pView = theApp.GetActiveEditView();
-	LaTeXDocument *pDoc = NULL;
+	CodeView* pView = theApp.GetActiveCodeView();
+	CodeDocument* pDoc = NULL;
 	CString strCurrentPath;
 	long lCurrentLine = -1;
 
@@ -702,8 +702,9 @@ void COutputDoc::OnEditFindInFiles()
 	if (!m_bCanGrep)
 		return;
 
-	// show dialog
+	//Show dialog
 	CFindInFilesDialog dlg;
+	dlg.m_strSearchFor = theApp.GetCurrentWordOrSelection(false, true, true);
 
 	if (dlg.DoModal() != IDOK)
 		return; // cancel pressed
@@ -1279,6 +1280,21 @@ void COutputDoc::AddBadBox(COutputInfo& badbox)
 
 	if (errorListView_)
 		errorListView_->AddMessage(badbox,CBuildView::imageBadBox);
+}
+
+void COutputDoc::EnableUpdateOfViews(const bool bEnable)
+{
+	//Enable/disable update of build output
+	if (m_pBuildView)
+	{
+		m_pBuildView->EnableUpdate(bEnable);
+	}
+
+	//Enable/disable update of error list
+	if (errorListView_)
+	{
+		errorListView_->EnableUpdate(bEnable);
+	}
 }
 
 void COutputDoc::OnLatexClean()

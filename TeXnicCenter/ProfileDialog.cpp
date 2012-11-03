@@ -69,9 +69,12 @@ END_MESSAGE_MAP()
 
 CProfileDialog::CProfileDialog(CWnd* pParent /*=NULL*/)
 		: CPropertyDialog(CProfileDialog::IDD, IDC_TAB_PROFILEPAGES, pParent),
+		m_wndPagePreprocessor(IDS_PREPROCESSOR, &CProfile::GetPreProcessorArray),
+		m_wndPagePostprocessor(IDS_POSTPROCESSOR, &CProfile::GetPostProcessorArray),
 		m_pCurrentProfile(NULL)
 {
 	AddPage(&m_wndPageLatex);
+	AddPage(&m_wndPagePreprocessor);
 	AddPage(&m_wndPagePostprocessor);
 	AddPage(&m_wndPageViewer);
 
@@ -152,10 +155,12 @@ BOOL CProfileDialog::ApplyChanges()
 	{
 		if (!m_wndPageLatex.ApplyChanges())
 			throw 0;
-		if (!m_wndPagePostprocessor.ApplyChanges())
+		if (!m_wndPagePreprocessor.ApplyChanges())
 			throw 1;
-		if (!m_wndPageViewer.ApplyChanges())
+		if (!m_wndPagePostprocessor.ApplyChanges())
 			throw 2;
+		if (!m_wndPageViewer.ApplyChanges())
+			throw 3;
 	}
 	catch (int nPage)
 	{
@@ -179,21 +184,23 @@ BOOL CProfileDialog::OnSelectionChanging()
 
 void CProfileDialog::OnSelectionChanged()
 {
-	CProfile *pProfile = NULL;
-	int nIndex = m_wndProfileList.GetNextItem(-1, LVNI_SELECTED);
+	CProfile* pProfile = NULL;
+	CString strProfile = _T("");
+	const int nIndex = m_wndProfileList.GetNextItem(-1, LVNI_SELECTED);
 
 	if (nIndex >= 0)
 	{
-		CString strProfile = m_wndProfileList.GetItemText(nIndex, 0);
-		if (!strProfile.IsEmpty())
-			m_profiles.Lookup(strProfile, pProfile);
+		strProfile = m_wndProfileList.GetItemText(nIndex, 0);
+		if (!strProfile.IsEmpty()) m_profiles.Lookup(strProfile, pProfile);
 	}
 
 	m_wndPageLatex.OnUpdateDataSet(pProfile);
+	m_wndPagePreprocessor.OnUpdateDataSet(pProfile);
 	m_wndPagePostprocessor.OnUpdateDataSet(pProfile);
 	m_wndPageViewer.OnUpdateDataSet(pProfile);
 
 	m_pCurrentProfile = pProfile;
+	m_profiles.SetActiveProfile(strProfile);
 
 	UpdateControlStates();
 }

@@ -41,6 +41,8 @@
 #define ID_METAPOST_NEW                 192
 #define ID_BIBTEX_NEW                   193
 #define IDR_LATEX                       194
+#define IDS_POSTPROCESSOR               194
+#define IDS_PREPROCESSOR                195
 #define IDR_FIND                        199
 #define IDR_IMAGES                      201
 #define IDR_HIDDEN_CMDS                 206
@@ -462,6 +464,7 @@
 #define IDS_CONFIGURE_FOUND_DISTRIBUTION 1393
 #define IDS_RECURSIVE_INCLUSION         1394
 #define IDS_CODE_VIEW_INDICATOR         1395
+#define IDS_CODE_VIEW_INDICATOR_SELECTION 1396
 #define IDC_EDIT_BIBTEXARGUMENTS        1500
 #define IDC_EDIT_BIBTEXPATH             1501
 #define IDR_LATEXDOCTYPE                1502
@@ -717,6 +720,17 @@
 #define IDS_SPELL_NO_SUGGESTIONS        8662
 #define IDS_MISSING_SECTION             8663
 #define IDC_EDITOR_CLOSETOOLWINDOWS_ESC 8667
+#define IDC_PREPROCESSORLIST            8668
+#define IDC_EDIT_PRPEXE                 8669
+#define IDC_EDIT_PRPARGUMENTS           8670
+#define IDC_EDIT_PRPINPUT               8671
+#define IDC_EDIT_PRPOUTPUT              8672
+#define IDC_BROWSE_PREPROCESSOR         8673
+#define IDC_INSERTPH_PRPARGUMENTS       8674
+#define IDC_INSERTPH_PRPINPUT           8675
+#define IDC_INSERTPH_PRPOUTPUT          8676
+#define IDC_BROWSE_PPROCESSOR           8677
+#define IDC_PPROCESSORLIST              8678
 #define ID_TEXTMODULES_FIRST            17000
 #define ID_TEXTMODULES_LAST             18000
 #define ID_VIEW_BAR1                    32760
@@ -1347,6 +1361,7 @@
 #define ID_EDIT_OUTSOURCE               40431
 #define ID_EDIT_PREVGREPRESULT          40432
 #define ID_EDIT_SEL_BIGGER_BLOCK        40433
+#define ID_EDIT_INDICATOR_SELECTION     40434
 #define ID_EDIT_SPELL_ADD               40435
 #define ID_EDIT_SPELL_IGNORE_ALL        40436
 #define ID_EDIT_SPLIT_PARAGRAPH         40437
@@ -1458,15 +1473,16 @@
 #define IDR_ERROR_VIEW                  57673
 #define IDR_MAINFRAMEOLD                57675
 #define IDR_LATEXDOCTYPEOLD             57676
+#define IDD_PROFILE_PPROCESSOR          57679
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        57678
+#define _APS_NEXT_RESOURCE_VALUE        57680
 #define _APS_NEXT_COMMAND_VALUE         40689
-#define _APS_NEXT_CONTROL_VALUE         8668
+#define _APS_NEXT_CONTROL_VALUE         8679
 #define _APS_NEXT_SYMED_VALUE           57773
 #endif
 #endif
