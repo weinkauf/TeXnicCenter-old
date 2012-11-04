@@ -124,16 +124,16 @@ BOOL CFileGrep::Grep(
 	}
 	if (m_bWholeWords)
 	{
-		strSearch = _T("\\<") + strSearch; // start of a word
-		strSearch += _T("\\>"); // end of a word
+		strSearch = _T("\\b") + strSearch; // start of a word
+		strSearch += _T("\\b"); // end of a word
 	}
 
 	try
 	{
 		if (m_bCaseSensitive)
-			m_regEx.assign(strSearch,std::tr1::regex_constants::icase);
-		else
 			m_regEx.assign(strSearch);
+		else
+			m_regEx.assign(strSearch,std::tr1::regex_constants::icase);
 	}
 	catch (...)
 	{

@@ -3,7 +3,7 @@
 	<xs:annotation>
 		<xs:documentation>
 			Schema for TeXnicCenter output profiles.
-			Copyright (c) 2003-2004 ToolsCenter.org. All rights reserved.
+			Copyright (c) 2003-2012 ToolsCenter.org. All rights reserved.
 			www.ToolsCenter.org
 		</xs:documentation>
 	</xs:annotation>
@@ -25,7 +25,7 @@
 					</xs:unique>
 				</xs:element>
 			</xs:sequence>
-			<xs:attribute name="version" type="xs:decimal" use="required" fixed="1.0" />
+			<xs:attribute name="version" type="xs:decimal" use="required" />
 		</xs:complexType>
 	</xs:element>
 	
@@ -35,6 +35,12 @@
 			<xs:element name="texCommand" type="DisableableCommandLineCommandDefinition" />
 			<xs:element name="bibTexCommand" type="DisableableCommandLineCommandDefinition" />
 			<xs:element name="makeIndexCommand" type="DisableableCommandLineCommandDefinition" />
+			<xs:element name="preProcessors" type="ProcessorList" minOccurs="0">
+				<xs:unique name="preProcessorNames">
+					<xs:selector xpath="processor" />
+					<xs:field xpath="@name" />
+				</xs:unique>
+			</xs:element>
 			<xs:element name="postProcessors" type="ProcessorList">
 				<xs:unique name="postProcessorNames">
 					<xs:selector xpath="processor" />
