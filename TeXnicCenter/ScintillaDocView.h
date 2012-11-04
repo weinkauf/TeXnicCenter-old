@@ -28,6 +28,7 @@ to maintain a single distribution point for the source code.
 
 
 #include "ScintillaCtrl.h"
+#include "DialogTemplate.h"
 
 #ifndef __AFXTEMPL_H__
 #pragma message("To avoid this message please put afxtempl.h into your pre compiled header (normally stdafx.h)")
@@ -43,6 +44,9 @@ to maintain a single distribution point for the source code.
 
 class SCINTILLADOCVIEW_EXT_CLASS CScintillaFindReplaceDlg : public CFindReplaceDialog
 {
+  DialogTemplate templ_;
+  bool find_only_;
+
 public:
 //Constructors / Destructors
   CScintillaFindReplaceDlg();
@@ -51,12 +55,15 @@ public:
   BOOL Create(BOOL bFindDialogOnly, LPCTSTR lpszFindWhat, LPCTSTR lpszReplaceWith = NULL, DWORD dwFlags = FR_DOWN, CWnd* pParentWnd = NULL);
   BOOL GetRegularExpression() const { return m_bRegularExpression; };
   void SetRegularExpression(BOOL bRegularExpression) { m_bRegularExpression = bRegularExpression; };
+  static CScintillaFindReplaceDlg* GetFindReplaceDlg();
+
+  bool IsFindDialogOnly() const { return find_only_; }
 
 protected:
 	virtual BOOL OnInitDialog();
 
   afx_msg void OnRegularExpression();
-  
+
 //Member variables
   BOOL m_bRegularExpression;
 
@@ -68,6 +75,7 @@ class SCINTILLADOCVIEW_EXT_CLASS CScintillaView : public CView
 public:
 //Constructors / Destructors
   CScintillaView();
+  virtual ~CScintillaView(){}
 
 //Methods
   CScintillaCtrl& GetCtrl();
@@ -101,6 +109,7 @@ protected:
 	virtual BOOL FindTextSimple(LPCTSTR lpszFind, BOOL bNext, BOOL bCase, BOOL bWord, BOOL bRegularExpression);
 	virtual void OnReplaceSel(LPCTSTR lpszFind, BOOL bNext, BOOL bCase,	BOOL bWord, BOOL bRegularExpression, LPCTSTR lpszReplace);
 	virtual void OnReplaceAll(LPCTSTR lpszFind, LPCTSTR lpszReplace, BOOL bCase, BOOL bWord, BOOL bRegularExpression);
+	virtual void GetReplaceAllTarget(long& s, long& e);
 	virtual BOOL SameAsSelected(LPCTSTR lpszCompare, BOOL bCase, BOOL bWord, BOOL bRegularExpression);
 	virtual long FindAndSelect(DWORD dwFlags, TextToFind& ft);
   virtual void AdjustFindDialogPosition();

@@ -123,9 +123,10 @@ CStructureParser::CStructureParser(CStructureParserHandler *pStructureParserHand
 , m_regexCaption(_T("\\\\caption\\s*([\\[\\{].*\\})"))
 , m_regexLabel(_T("\\\\label\\s*\\{([^\\}]*)\\}"))
 , m_regexInput(_T("\\\\(input|include)\\s*\\{\\s*\"?([^\\}]*)\"?\\s*\\}"))
-, m_regexBib(_T("\\\\(no)?bibliography([^(style)][[:alpha:]]+)?\\s*\\{\\s*([^\\}]*)\\s*\\}"))
+, m_regexBib(_T("\\\\(no)?bibliography(?!style)([[:alpha:]]+)?\\s*\\{\\s*([^\\}]*)\\s*\\}"))
 , m_regexAppendix(_T("\\\\appendix([^[:graph:]]|$)"))
 , m_regexGraphic(_T("\\\\includegraphics\\s*\\*?(\\s*\\[[^\\]]*\\]){0,2}\\s*\\{\\s*\"?([^\\}]*)\"?\\s*\\}"))
+, m_regexGraphicsPath(_T("\\\\graphicspath\\s*\\{(.*)\\}"))
 , m_regexUserCmd(_T("\\\\(re)?newcommand\\s*\\{([^\\}]*)\\}(\\s*\\[[^\\]]*\\])\\s*\\{([^\\}]*)\\}"))
 , m_regexUserEnv(_T("\\\\(re)?newenvironment\\s*\\{([^\\}]*)\\}(\\s*\\[[^\\]]*\\])\\s*\\{([^\\}]*)\\}\\s*\\{([^\\}]*)\\}"))
 , m_regexInlineVerb(_T("\\\\verb\\*(.)[^$1]*\\1|\\\\verb([^\\*])[^$2]*\\2"))
@@ -162,6 +163,8 @@ BOOL CStructureParser::StartParsing(LPCTSTR lpszMainPath, LPCTSTR lpszWorkingDir
 	m_nLinesParsed = 0;
 	m_nFilesParsed = 0;
 	m_nCharsParsed = 0;
+	m_ParsingFilesStack.clear();
+	m_BasePath.ReleaseBuffer(::GetCurrentDirectory(MAX_PATH, m_BasePath.GetBuffer(MAX_PATH)));
 
 	// Signal that parsing has started.
 	m_evtParsingDone.ResetEvent();
@@ -197,6 +200,7 @@ UINT StructureParserThread(LPVOID pStructureParser)
 	StructureItemContainer paSI;
 	bParsingResult = pParser->Parse(pParser->m_strMainPath, cookies, 0, paSI);
 
+	ASSERT(pParser->m_ParsingFilesStack.empty());
 	pParser->EmptyCookieStack(cookies, paSI);
 	
     {
@@ -370,22 +374,42 @@ void CStructureParser::ParseString(LPCTSTR lpText, int nLength, CCookieStack &co
 
 		if (::PathFileExists(strPath))
 		{
-			CString path;
+			//Make sure it's not a recursive inclusion
+			// - otherwise, it will result in a stack overflow
 
-			if (CPathTool::IsRelativePath(strPath))
+			//Get absolute path of the just specified file
+			const CString AbsPathToBeIncluded = CPathTool::IsRelativePath(strPath) ? CPathTool::Cat(m_BasePath, strPath) : strPath;
+
+			//Search for this file in the stack of files that are current open for parsing
+			// - We explicitly do not care about files, that have finished parsing already.
+			// - Because: Including several times is ok.
+			bool bFoundRecursion(false);
+			for(auto it=m_ParsingFilesStack.begin();it!=m_ParsingFilesStack.end();it++)
 			{
-				CString dir;
-				dir.ReleaseBuffer(::GetCurrentDirectory(MAX_PATH,dir.GetBuffer(MAX_PATH)));
-				
-				path = CPathTool::Cat(dir,strPath);
+				//Get the absolute path of this one
+				const CString AbsPathParsing = CPathTool::IsRelativePath(*it) ? CPathTool::Cat(m_BasePath, *it) : *it;
+
+				//Are they the same?
+				if (AbsPathToBeIncluded.CompareNoCase(AbsPathParsing) == 0)
+				{
+					//Yes, they are the same
+					bFoundRecursion = true;
+					break;
+				}
 			}
 
-			const CString relative_path = CPathTool::GetRelativePath(path,strActualFile,FALSE,FALSE);
-
-			// Make sure it's not a recursive inclusion
-			// otherwise it will result in a stack overflow
-			if (relative_path.CompareNoCase(strPath) != 0)
+			if (bFoundRecursion)
 			{
+				//Notify the user about the error
+				if (m_pParseOutputHandler && !m_bCancel)
+				{
+					info.SetErrorMessage(CString(MAKEINTRESOURCE(IDS_RECURSIVE_INCLUSION)));
+					m_pParseOutputHandler->OnParseLineInfo(info, nFileDepth, CParseOutputHandler::error);
+				}
+			}
+			else
+			{
+				//Continue parsing this new file
 				if (m_pParseOutputHandler && !m_bCancel)
 				{
 					CString message;
@@ -396,19 +420,13 @@ void CStructureParser::ParseString(LPCTSTR lpText, int nLength, CCookieStack &co
 					m_pParseOutputHandler->OnParseLineInfo(info, nFileDepth, CParseOutputHandler::information);
 				}
 
+				//Here we go!
 				Parse(strPath, cookies, nFileDepth + 1, aSI);
-			}
-			else // otherwise notify the user about the error
-			{
-				if (m_pParseOutputHandler && !m_bCancel)
-				{
-					info.SetErrorMessage(CString(MAKEINTRESOURCE(IDS_RECURSIVE_INCLUSION)));
-					m_pParseOutputHandler->OnParseLineInfo(info, nFileDepth, CParseOutputHandler::error);
-				}
 			}
 		}
 		else if (m_pParseOutputHandler && !m_bCancel)
 		{
+			//File does not exist (or we could just not find it)
 			AddFileItem(strPath, StructureItem::missingTexFile, strActualFile, nActualLine, aSI);
 
 			CString message;
@@ -416,6 +434,34 @@ void CStructureParser::ParseString(LPCTSTR lpText, int nLength, CCookieStack &co
 
 			info.SetErrorMessage(message);
 			m_pParseOutputHandler->OnParseLineInfo(info, nFileDepth, CParseOutputHandler::warning);
+		}
+
+		// parse string behind occurrence
+		ParseString(what[0].second, lpTextEnd - what[0].second, cookies,
+		            strActualFile, nActualLine, nFileDepth, aSI);
+
+		return;
+	}
+
+	// Look for \graphicspath
+	if (regex_search(lpText, lpTextEnd, what, m_regexGraphicsPath, nFlags) && IsCmdAt(lpText, what[0].first - lpText))
+	{
+		// parse string before occurrence
+		ParseString(lpText, what[0].first - lpText, cookies,
+		            strActualFile, nActualLine, nFileDepth, aSI);
+
+		// Replace the list of graphics paths with the new one (LaTeX behavior)
+		GraphicPaths.clear();
+		CString strPaths(what[1].first, what[1].second - what[1].first);
+		// - find all paths within that argument list
+		tregex regexSplitPaths(_T("\\{([^}]*)\\}"));
+		LPCTSTR lpPathsStart = strPaths;
+		LPCTSTR lpPathsEnd = lpPathsStart + strPaths.GetLength();
+		std::tr1::match_results<LPCTSTR> MatchResult;
+		while (regex_search(lpPathsStart, lpPathsEnd, MatchResult, regexSplitPaths, nFlags))
+		{
+			GraphicPaths.push_back(CString(MatchResult[1].first, MatchResult[1].second - MatchResult[1].first));
+			lpPathsStart = MatchResult[0].second;
 		}
 
 		// parse string behind occurrence
@@ -449,19 +495,25 @@ void CStructureParser::ParseString(LPCTSTR lpText, int nLength, CCookieStack &co
 		bool GraphicFileFound = false;
 		CString strCompletePath;
 
-		for (int i = 0; i < strGraphicLength; ++i)
+		//We look in all paths that are registered for graphics. This is \graphicspath and TODO: also TEXINPUTS
+		for (int p = -1; p < (int)GraphicPaths.size() && !GraphicFileFound; p++)
 		{
-			strCompletePath = strPath;
-			const CString& extension = strGraphicTypes[i];
-			strCompletePath += extension;
+			CString strPathWOExt(strPath);
+			if (p >= 0) strPathWOExt = GraphicPaths[p] + strPath; //First path (p==-1) is current dir
 
-			if (::PathFileExists(strCompletePath))
+			//And now for the extensions
+			for (int i = 0; i < strGraphicLength; i++)
 			{
-				//File exists
-				AddFileItem(ResolveFileName(strCompletePath), StructureItem::graphicFile,
-				            strActualFile, nActualLine, aSI);
-				GraphicFileFound = true;
-				break;
+				strCompletePath = strPathWOExt + strGraphicTypes[i];
+
+				if (::PathFileExists(strCompletePath))
+				{
+					//File exists
+					AddFileItem(ResolveFileName(strCompletePath), StructureItem::graphicFile,
+								strActualFile, nActualLine, aSI);
+					GraphicFileFound = true;
+					break;
+				}
 			}
 		}
 
@@ -1316,6 +1368,7 @@ BOOL CStructureParser::Parse(LPCTSTR lpszPath, CCookieStack &cookies,
 		return FALSE;
 	}
 
+	m_ParsingFilesStack.push_back(lpszPath);
 	m_nFilesParsed++;
 
 	CString strActualFile(lpszPath);
@@ -1426,6 +1479,7 @@ BOOL CStructureParser::Parse(LPCTSTR lpszPath, CCookieStack &cookies,
 
 	// delete text source object
 	pTs.release()->Delete();
+	m_ParsingFilesStack.pop_back();
 
 	return !m_bCancel;
 }

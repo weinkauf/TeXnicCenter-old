@@ -7,6 +7,8 @@
 #include "LatexProject.h"
 #include "OleDrop.h"
 #include "OutputDoc.h"
+#include "SearchToolBarEditButton.h"
+#include "SearchToolBarEditCtrl.h"
 #include "TeXnicCenter.h"
 
 enum {
@@ -57,68 +59,6 @@ void Tokenize(const CString& text, const CString& sep, std::vector<CString>& wor
 	LPCTSTR sep_last = sep_first + sep.GetLength();
 
 	Tokenize(first,last,sep_first,sep_last,words);
-}
-
-namespace {
-	class SearchToolBarEditCtrl :
-		public CMFCToolBarEditCtrl
-	{
-	public:
-		SearchToolBarEditCtrl(CMFCToolBarEditBoxButton& b)
-			: CMFCToolBarEditCtrl(b)
-		{
-		}
-
-		BOOL PreTranslateMessage(MSG* pMsg)
-		{
-			BOOL result = FALSE;
-
-			if (!(pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_ESCAPE)) {
-				if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_TAB) {
-					// Handle switch to the next window using Tab and Shift+Tab
-					// For now, there's only a switch between two windows:
-					// the edit box and the list control
-					ASSERT(GetParent() && GetParent()->GetParent());
-					GetParent()->GetParent()->GetNextDlgTabItem(GetParent(),
-						::GetKeyState(VK_SHIFT) >> 15 & 1)->SetFocus();
-					result = TRUE;
-				}
-				else
-					result = CMFCToolBarEditCtrl::PreTranslateMessage(pMsg);
-			}
-			else if (GetFocus() == this) {
-				if (GetWindowTextLength() != 0) { // Not empty
-					SetWindowText(0); // Clear the edit box
-					result = TRUE;
-				}
-				else // otherwise let the base deactivate the view
-					result = CMFCToolBarEditCtrl::PreTranslateMessage(pMsg);
-			}
-
-			return result;
-		}
-	};
-
-	class SearchToolBarEditButton :
-		public CMFCToolBarEditBoxButton
-	{
-		DECLARE_DYNCREATE(SearchToolBarEditButton)
-
-	public:
-		SearchToolBarEditButton()
-			: CMFCToolBarEditBoxButton(ID_SEARCH_EDIT,-1,ES_WANTRETURN|ES_AUTOHSCROLL|ES_LEFT|ES_NOHIDESEL|WS_TABSTOP,250)
-		{
-		}
-
-		CEdit* CreateEdit(CWnd* w, const CRect& rec)
-		{
-			SearchToolBarEditCtrl* e = new SearchToolBarEditCtrl(*this);
-			e->Create(m_dwStyle,rec,w,m_nID);
-			return e;
-		}
-	};
-
-	IMPLEMENT_DYNCREATE(SearchToolBarEditButton, CMFCToolBarEditBoxButton)
 }
 
 struct BibView::Item {
@@ -196,10 +136,12 @@ int BibView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	toolbar_.SetRouteCommandsViaFrame(FALSE);
 
-	SearchToolBarEditButton edit;
+	SearchToolBarEditButton edit(ID_SEARCH_EDIT);
 
 	search_button_ = static_cast<CMFCToolBarEditBoxButton*>(toolbar_.GetButton(toolbar_.ReplaceButton(ID_SEARCH_EDIT,edit)));
+	
 	ENSURE(search_button_);
+	ASSERT(search_button_->m_nID == ID_SEARCH_EDIT);
 
 	CMenu menu;
 	menu.LoadMenu(IDR_BIB_SEARCH_OPTIONS);
@@ -255,16 +197,6 @@ int BibView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	return 0;
 }
 
-//BOOL BibView::CanBeTabbedDocument() const
-//{
-//	return true;
-//}
-//
-//BOOL BibView::CanBeDocked(CBasePane* /*pDockBar*/) const
-//{
-//	return false;
-//}
-
 void BibView::OnSize(UINT nType, int cx, int cy)
 {
 	WorkspacePaneBase::OnSize(nType, cx, cy);
@@ -294,12 +226,10 @@ void BibView::Clear(void)
 
 void BibView::AdjustLayout(const CRect& rect)
 {
-	if (toolbar_ && list_view_)
-	{
+	if (toolbar_ && list_view_) {
 		CSize size(0,0);
 
-		if ((toolbar_.GetStyle() & WS_VISIBLE) == WS_VISIBLE)
-		{
+		if ((toolbar_.GetStyle() & WS_VISIBLE) == WS_VISIBLE) {
 			size = toolbar_.CalcFixedLayout(TRUE,TRUE);
 			toolbar_.SetWindowPos(0,rect.left,rect.top,
 				rect.right - rect.left,rect.top + size.cy,SWP_NOACTIVATE|SWP_NOZORDER);
@@ -757,7 +687,8 @@ void BibView::OnLvnItemChanged(NMHDR* nm, LRESULT*)
 	LPNMLISTVIEW p = reinterpret_cast<LPNMLISTVIEW>(nm);
 
 	if (p->uChanged & LVIF_STATE && p->iItem != -1 && p->uNewState & LVIS_SELECTED)
-		GetProject()->SetCurrentStructureItem(bib_items_[list_view_.GetItemData(p->iItem)].structure_item_index);
+		GetProject()->SetCurrentStructureItem(static_cast<int>
+			(bib_items_[list_view_.GetItemData(p->iItem)].structure_item_index));
 }
 
 BOOL BibView::PreTranslateMessage(MSG* pMsg)
@@ -804,20 +735,23 @@ void BibView::DoPopulate( const PredicateFunctionType& predicate )
 			lvi.lParam = lvi.iItem;
 
 			const int index = list_view_.InsertItem(&lvi);
-			ASSERT(index != -1);
 
-			list_view_.SetItemText(index,1,it->bib.GetAuthor());
-			list_view_.SetItemText(index,2,it->bib.GetTitle());
+			if (index == -1)
+				::InterlockedExchange(&stop_search_, 1);
+			else {
+				list_view_.SetItemText(index,1,it->bib.GetAuthor());
+				list_view_.SetItemText(index,2,it->bib.GetTitle());
 
-			if (it->bib.HasYear()) {
-				CString& year = temp_;
-				year.Format(_T("%i"),it->bib.GetYear().GetValue());
+				if (it->bib.HasYear()) {
+					CString& year = temp_;
+					year.Format(_T("%i"),it->bib.GetYear().GetValue());
 
-				list_view_.SetItemText(index,3,year);
+					list_view_.SetItemText(index,3,year);
+				}
+
+				list_view_.SetItemText(index,4,it->bib.GetTypeString());
+				list_view_.SetItemText(index,5,it->bib.GetPublisher());
 			}
-
-			list_view_.SetItemText(index,4,it->bib.GetTypeString());
-			list_view_.SetItemText(index,5,it->bib.GetPublisher());
 		}
 	}
 
@@ -864,8 +798,18 @@ void BibView::OnPopulateThread( const PredicateFunctionType& predicate )
 
 void BibView::OnDestroy()
 {
-	::InterlockedExchange(&stop_search_,1);
-	::WaitForSingleObject(search_semaphore_,INFINITE);
+	::InterlockedExchange(&stop_search_, 1);
+
+	MSG msg;
+
+	while (::WaitForSingleObject(search_semaphore_, 0) == WAIT_TIMEOUT) {
+		// Let the main window process remaining messages sent from
+		// OnPopulateThread, otherwise a dead lock may occur.
+		while (::PeekMessage(&msg, list_view_.m_hWnd, 0, 0, PM_REMOVE | PM_QS_SENDMESSAGE) > 0) {
+			::TranslateMessage(&msg);
+			::DispatchMessage(&msg);
+		}
+	}
 
 	WorkspacePaneBase::OnDestroy();
 }

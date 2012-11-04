@@ -52,7 +52,7 @@ public:
 	        scan a bib file for entries.
 	        @param file Name of the BibTeX file (.bib)
 	 */
-	explicit BibTeXFile(const CString& file);
+	explicit BibTeXFile(const CString& fileName);
 	/** Destroys the CBiBTeXFile object */
 	virtual ~BibTeXFile();
 
@@ -118,7 +118,7 @@ public:
 	<code>@Comment{@Book{steward03, [...]}}</code>
 	Example II<br>
 	<code>{ @Book{steward03, [...]}}</code>
-	issues a warning, since on opening brace percedes the book entry. BibTex would NOT consider
+	issues a warning, since on opening brace precedes the book entry. BibTex would NOT consider
 	the book entry in this case, since the brace is outside an entry and is treated as comment.
 	 */
 	BOOL IsWarnWrongLevelAT() const;
@@ -137,7 +137,7 @@ private:
 	        @param reqSize Size of string to copy from the buffer
 	        @return TRUE, if copy was successfully
 	 */
-	BOOL SaveCopyBuffer(const TCHAR* buffer, int reqSize);
+	BOOL SaveCopyBuffer(LPCTSTR buffer, int reqSize);
 	/* Called, if an item is complete. */
 	void FinalizeItem();
 	/* Parses a field entry 'name = value' */
@@ -170,7 +170,7 @@ private:
 	BOOL m_WarnWrongLevelAT;
 	int m_ErrorCount;
 	int m_BufferSize;
-	TCHAR* m_Buffer;
+	CString m_Buffer;
 	CString m_Filename;
 	CMapStringToOb m_Entries;
 	CMapStringToString m_Strings;
